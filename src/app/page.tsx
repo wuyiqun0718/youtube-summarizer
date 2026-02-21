@@ -6,6 +6,7 @@ import UrlInput from "@/components/UrlInput";
 import YouTubePlayer from "@/components/YouTubePlayer";
 import SummaryDisplay from "@/components/SummaryDisplay";
 import TranscriptPanel from "@/components/TranscriptPanel";
+import ChatPanel from "@/components/ChatPanel";
 
 interface CaptionSegment {
   start: number;
@@ -28,6 +29,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoData | null>(null);
   const [favorited, setFavorited] = useState(false);
+  const [activeTab, setActiveTab] = useState<"summary" | "chat">("summary");
 
   useEffect(() => {
     const videoId = searchParams.get("v");
@@ -150,15 +152,51 @@ export default function Home() {
             <YouTubePlayer videoId={video.youtube_id} />
           </div>
 
-          {/* Right: Summary — independent scroll */}
-          <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-xl p-6 border border-zinc-200 dark:border-zinc-800 lg:overflow-y-auto">
-            <SummaryDisplay
-              en={video.en}
-              zh={video.zh}
-              videoId={video.youtube_id}
-            />
-            {video.captions && video.captions.length > 0 && (
-              <TranscriptPanel captions={video.captions} videoId={video.youtube_id} />
+          {/* Right: Summary/Chat — independent scroll */}
+          <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800 lg:overflow-hidden flex flex-col">
+            {/* Tabs */}
+            <div className="flex border-b border-zinc-200 dark:border-zinc-700 shrink-0">
+              <button
+                onClick={() => setActiveTab("summary")}
+                className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                  activeTab === "summary"
+                    ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-500"
+                    : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+                }`}
+              >
+                Summary
+              </button>
+              <button
+                onClick={() => setActiveTab("chat")}
+                className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                  activeTab === "chat"
+                    ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-500"
+                    : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+                }`}
+              >
+                Chat
+              </button>
+            </div>
+
+            {/* Tab content */}
+            {activeTab === "summary" ? (
+              <div className="p-6 overflow-y-auto flex-1">
+                <SummaryDisplay
+                  en={video.en}
+                  zh={video.zh}
+                  videoId={video.youtube_id}
+                />
+                {video.captions && video.captions.length > 0 && (
+                  <TranscriptPanel captions={video.captions} videoId={video.youtube_id} />
+                )}
+              </div>
+            ) : (
+              <div className="flex-1 overflow-hidden">
+                <ChatPanel
+                  videoId={video.youtube_id}
+                  captions={video.captions || []}
+                />
+              </div>
             )}
           </div>
         </div>
