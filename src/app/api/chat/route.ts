@@ -1,9 +1,13 @@
 import { NextRequest } from "next/server";
 import { getVideoByYoutubeId, getChatHistory, saveChatHistory } from "@/lib/db";
 
+// Ensure Next.js doesn't buffer or cache this route
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const QWEN_API_URL =
   "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
-const QWEN_MODEL = "qwen3.5-plus";
+const QWEN_MODEL = "qwen-plus"; // Non-reasoning model for fast chat
 
 export async function POST(req: NextRequest) {
   try {
