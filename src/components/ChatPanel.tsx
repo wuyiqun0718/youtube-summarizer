@@ -74,8 +74,8 @@ export default function ChatPanel({ videoId }: ChatPanelProps) {
     if (!text || loading) return;
 
     const userMsg: ChatMessage = { role: "user", content: text };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
+    const assistantMsg: ChatMessage = { role: "assistant", content: "" };
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
     setInput("");
     setLoading(true);
 
@@ -83,20 +83,53 @@ export default function ChatPanel({ videoId }: ChatPanelProps) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          videoId,
-          message: text,
-          history: messages,
-        }),
+        body: JSON.stringify({ videoId, message: text }),
       });
-      const data = await res.json();
-      const reply = data.reply || data.error || "No response.";
-      setMessages([...newMessages, { role: "assistant", content: reply }]);
-    } catch {
-      setMessages([
-        ...newMessages,
-        { role: "assistant", content: "Failed to get response. Please try again." },
-      ]);
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Request failed");
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullReply = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data: ")) continue;
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.delta) {
+              fullReply += parsed.delta;
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: "assistant", content: fullReply };
+                return updated;
+              });
+            }
+          } catch { /* skip */ }
+        }
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Failed to get response.";
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: "assistant", content: errMsg };
+        return updated;
+      });
     } finally {
       setLoading(false);
     }

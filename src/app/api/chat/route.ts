@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getVideoByYoutubeId, getChatHistory, saveChatHistory } from "@/lib/db";
 
 const QWEN_API_URL =
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     };
 
     if (!videoId || !message) {
-      return NextResponse.json(
+      return Response.json(
         { error: "videoId and message are required" },
         { status: 400 }
       );
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.QWEN_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
+      return Response.json(
         { reply: "API key not configured. Please set QWEN_API_KEY." },
         { status: 200 }
       );
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const video = getVideoByYoutubeId(videoId);
     if (!video || !video.captions_raw) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Video not found or has no captions" },
         { status: 404 }
       );
@@ -68,31 +68,76 @@ ${transcript}`;
         model: QWEN_MODEL,
         messages,
         temperature: 0.7,
+        stream: true,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Qwen API error:", errorText);
-      return NextResponse.json(
-        { error: "LLM request failed" },
-        { status: 502 }
-      );
+      return Response.json({ error: "LLM request failed" }, { status: 502 });
     }
 
-    const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content || "No response.";
+    // Stream the response via SSE
+    const encoder = new TextEncoder();
+    let fullReply = "";
 
-    // Save both messages
-    history.push({ role: "assistant", content: reply });
-    saveChatHistory(videoId, history);
+    const stream = new ReadableStream({
+      async start(controller) {
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-    return NextResponse.json({ reply });
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith("data: ")) continue;
+              const data = trimmed.slice(6);
+              if (data === "[DONE]") continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices?.[0]?.delta?.content;
+                if (delta) {
+                  fullReply += delta;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta })}\n\n`));
+                }
+              } catch {
+                // skip malformed chunks
+              }
+            }
+          }
+
+          // Save to DB after stream completes
+          history.push({ role: "assistant", content: fullReply });
+          saveChatHistory(videoId, history);
+
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch (err) {
+          console.error("Stream error:", err);
+          controller.error(err);
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   } catch (err) {
     console.error("Chat API error:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }
