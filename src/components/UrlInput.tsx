@@ -20,7 +20,7 @@ export default function UrlInput({ onSubmit, loading }: UrlInputProps) {
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="rounded-2xl bg-zinc-700/50 border border-zinc-600/60 shadow-lg shadow-black/20 focus-within:ring-2 focus-within:ring-blue-500/70 focus-within:border-blue-500/30 transition-all overflow-hidden backdrop-blur-sm">
+      <div className="rounded-2xl bg-white dark:bg-zinc-700/50 border border-zinc-300 dark:border-zinc-600/60 shadow-lg shadow-zinc-300/30 dark:shadow-black/20 focus-within:ring-2 focus-within:ring-blue-500/70 focus-within:border-blue-500/30 transition-all overflow-hidden backdrop-blur-sm">
         {/* URL input */}
         <div className="px-5 py-3.5">
           <input
@@ -28,7 +28,7 @@ export default function UrlInput({ onSubmit, loading }: UrlInputProps) {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="Paste a YouTube URL here..."
-            className="w-full bg-transparent text-zinc-50 placeholder-zinc-400 focus:outline-none text-[15px]"
+            className="w-full bg-transparent text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 dark:placeholder-zinc-400 focus:outline-none text-[15px]"
             disabled={loading}
           />
         </div>
@@ -42,14 +42,14 @@ export default function UrlInput({ onSubmit, loading }: UrlInputProps) {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Custom instructions (optional)..."
-            className="w-full bg-transparent text-zinc-300 placeholder-zinc-500 focus:outline-none text-sm resize-none focus:text-zinc-200 transition-colors"
+            className="w-full bg-transparent text-zinc-600 dark:text-zinc-300 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none text-sm resize-none focus:text-zinc-800 dark:focus:text-zinc-200 transition-colors"
             rows={1}
             disabled={loading}
           />
         </div>
 
         {/* Bottom bar */}
-        <div className="flex justify-end px-4 py-2.5 bg-zinc-700/30">
+        <div className="flex justify-end px-4 py-2.5 bg-zinc-100/50 dark:bg-zinc-700/30">
           <button
             type="submit"
             disabled={!url.trim() || loading}

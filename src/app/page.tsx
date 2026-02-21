@@ -29,7 +29,6 @@ export default function Home() {
   const [video, setVideo] = useState<VideoData | null>(null);
   const [favorited, setFavorited] = useState(false);
 
-  // Load from history when ?v= param is present
   useEffect(() => {
     const videoId = searchParams.get("v");
     if (videoId) {
@@ -102,7 +101,7 @@ export default function Home() {
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Hero Section */}
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-zinc-100 mb-2">
+        <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">
           YouTube Video Summarizer
         </h1>
         <p className="text-zinc-400">
@@ -129,12 +128,12 @@ export default function Home() {
           {/* Left: Video Player */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-semibold text-zinc-100 truncate flex-1">
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 truncate flex-1">
                 {video.title}
               </h2>
               <button
                 onClick={handleFavorite}
-                className="shrink-0 p-2 rounded-lg hover:bg-zinc-800 transition-colors"
+                className="shrink-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 title={favorited ? "取消收藏" : "收藏"}
               >
                 {favorited ? (
@@ -152,7 +151,7 @@ export default function Home() {
           </div>
 
           {/* Right: Summary */}
-          <div className="bg-zinc-900/50 rounded-xl p-6 border border-zinc-800 overflow-y-auto max-h-[700px]">
+          <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-xl p-6 border border-zinc-200 dark:border-zinc-800 overflow-y-auto max-h-[700px]">
             <SummaryDisplay
               en={video.en}
               zh={video.zh}

@@ -9,9 +9,8 @@ interface VideoSummary {
   youtube_id: string;
   title: string;
   thumbnail: string;
-  summary: string;
-  takeaways: string[];
-  timestamps: { time: number; text: string }[];
+  summary_en: string;
+  summary_zh: string;
   favorited: number;
   created_at: string;
 }
@@ -113,8 +112,8 @@ export default function HistoryPage() {
       result = result.filter(
         (v) =>
           v.title.toLowerCase().includes(q) ||
-          v.summary.toLowerCase().includes(q) ||
-          v.takeaways.some((t) => t.toLowerCase().includes(q))
+          (v.summary_en && v.summary_en.toLowerCase().includes(q)) ||
+          (v.summary_zh && v.summary_zh.toLowerCase().includes(q))
       );
     }
     return result;
@@ -147,7 +146,7 @@ export default function HistoryPage() {
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-zinc-100">History</h1>
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">History</h1>
         <span className="text-sm text-zinc-500">
           {videos.length} video{videos.length !== 1 ? "s" : ""} analyzed
         </span>
@@ -165,10 +164,10 @@ export default function HistoryPage() {
             </svg>
             <input
               type="text"
-              placeholder="Search by title, summary, or takeaways..."
+              placeholder="Search by title or summary..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 transition-colors text-sm"
+              className="w-full pl-10 pr-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors text-sm"
             />
             {search && (
               <button
@@ -186,7 +185,7 @@ export default function HistoryPage() {
             className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all shrink-0 ${
               showFavOnly
                 ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"
-                : "bg-zinc-900/50 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+                : "bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700"
             }`}
           >
             <span>{showFavOnly ? "★" : "☆"}</span>
@@ -224,7 +223,7 @@ export default function HistoryPage() {
                 <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
                   {group.label}
                 </h2>
-                <div className="flex-1 h-px bg-zinc-800/60" />
+                <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800/60" />
                 <span className="text-xs text-zinc-600">{group.videos.length}</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -232,7 +231,7 @@ export default function HistoryPage() {
                   <Link
                     key={video.id}
                     href={`/?v=${video.youtube_id}`}
-                    className="group relative block bg-zinc-900/50 rounded-xl border border-zinc-800 overflow-hidden hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20 transition-all"
+                    className="group relative block bg-white dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-lg hover:shadow-zinc-300/20 dark:hover:shadow-black/20 transition-all"
                   >
                     <div className="relative aspect-video">
                       <Image
@@ -243,7 +242,6 @@ export default function HistoryPage() {
                         unoptimized
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                      {/* Action buttons overlay */}
                       <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={(e) => handleFavorite(video.youtube_id, e)}
@@ -266,7 +264,6 @@ export default function HistoryPage() {
                           </svg>
                         </button>
                       </div>
-                      {/* Favorite badge (always visible when favorited) */}
                       {video.favorited ? (
                         <div className="absolute top-2 left-2 text-yellow-400 text-sm group-hover:opacity-0 transition-opacity">
                           ★
@@ -274,19 +271,15 @@ export default function HistoryPage() {
                       ) : null}
                     </div>
                     <div className="p-4">
-                      <h3 className="font-medium text-zinc-200 line-clamp-2 mb-2 group-hover:text-white transition-colors">
+                      <h3 className="font-medium text-zinc-800 dark:text-zinc-200 line-clamp-2 mb-2 group-hover:text-zinc-950 dark:group-hover:text-white transition-colors">
                         {video.title}
                       </h3>
                       <p className="text-sm text-zinc-500 line-clamp-2 mb-3">
-                        {video.summary}
+                        {video.summary_en || video.summary_zh || ""}
                       </p>
                       <div className="flex items-center justify-between text-xs text-zinc-600">
                         <span>
                           {new Date(video.created_at + "Z").toLocaleDateString()}
-                        </span>
-                        <span>
-                          {video.takeaways.length} takeaway
-                          {video.takeaways.length !== 1 ? "s" : ""}
                         </span>
                       </div>
                     </div>

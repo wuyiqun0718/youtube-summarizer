@@ -11,10 +11,6 @@ interface SummaryDisplayProps {
   videoId?: string;
 }
 
-/**
- * Parse timestamp links like [1:23](t:83) and make them clickable.
- * Also handles [1:23:45](t:4425).
- */
 function TimestampLink({
   href,
   children,
@@ -26,13 +22,12 @@ function TimestampLink({
 }) {
   const match = href?.match(/^t:(\d+)$/);
   if (!match) {
-    // Regular link
     return (
       <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
+        className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 underline underline-offset-2"
       >
         {children}
       </a>
@@ -87,22 +82,22 @@ export default function SummaryDisplay({
         </TimestampLink>
       ),
       h1: ({ children }: ComponentPropsWithoutRef<"h1">) => (
-        <h1 className="text-xl font-bold text-zinc-100 mt-6 mb-3 first:mt-0">
+        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mt-6 mb-3 first:mt-0">
           {children}
         </h1>
       ),
       h2: ({ children }: ComponentPropsWithoutRef<"h2">) => (
-        <h2 className="text-lg font-semibold text-zinc-100 mt-5 mb-2.5 first:mt-0">
+        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mt-5 mb-2.5 first:mt-0">
           {children}
         </h2>
       ),
       h3: ({ children }: ComponentPropsWithoutRef<"h3">) => (
-        <h3 className="text-base font-semibold text-zinc-200 mt-4 mb-2">
+        <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-200 mt-4 mb-2">
           {children}
         </h3>
       ),
       p: ({ children }: ComponentPropsWithoutRef<"p">) => (
-        <p className="text-[15px] leading-7 text-zinc-300 mb-3">{children}</p>
+        <p className="text-[15px] leading-7 text-zinc-600 dark:text-zinc-300 mb-3">{children}</p>
       ),
       ul: ({ children }: ComponentPropsWithoutRef<"ul">) => (
         <ul className="space-y-1.5 mb-3 ml-1">{children}</ul>
@@ -113,13 +108,13 @@ export default function SummaryDisplay({
         </ol>
       ),
       li: ({ children }: ComponentPropsWithoutRef<"li">) => (
-        <li className="text-[15px] leading-6 text-zinc-300 flex items-start gap-2">
+        <li className="text-[15px] leading-6 text-zinc-600 dark:text-zinc-300 flex items-start gap-2">
           <span className="text-emerald-400 mt-1.5 shrink-0">•</span>
           <span>{children}</span>
         </li>
       ),
       blockquote: ({ children }: ComponentPropsWithoutRef<"blockquote">) => (
-        <blockquote className="border-l-2 border-zinc-600 pl-4 my-3 text-zinc-400 italic">
+        <blockquote className="border-l-2 border-zinc-300 dark:border-zinc-600 pl-4 my-3 text-zinc-400 italic">
           {children}
         </blockquote>
       ),
@@ -129,36 +124,35 @@ export default function SummaryDisplay({
         </div>
       ),
       th: ({ children }: ComponentPropsWithoutRef<"th">) => (
-        <th className="text-left px-3 py-2 bg-zinc-800 text-zinc-200 font-semibold border border-zinc-700">
+        <th className="text-left px-3 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-semibold border border-zinc-300 dark:border-zinc-700">
           {children}
         </th>
       ),
       td: ({ children }: ComponentPropsWithoutRef<"td">) => (
-        <td className="px-3 py-2 text-zinc-300 border border-zinc-700/50">
+        <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700/50">
           {children}
         </td>
       ),
       strong: ({ children }: ComponentPropsWithoutRef<"strong">) => (
-        <strong className="text-zinc-100 font-semibold">{children}</strong>
+        <strong className="text-zinc-900 dark:text-zinc-100 font-semibold">{children}</strong>
       ),
       em: ({ children }: ComponentPropsWithoutRef<"em">) => (
         <em className="text-zinc-400">{children}</em>
       ),
       code: ({ children }: ComponentPropsWithoutRef<"code">) => (
-        <code className="text-sm bg-zinc-800 text-emerald-300 px-1.5 py-0.5 rounded">
+        <code className="text-sm bg-zinc-100 dark:bg-zinc-800 text-emerald-600 dark:text-emerald-300 px-1.5 py-0.5 rounded">
           {children}
         </code>
       ),
-      hr: () => <div className="border-t border-zinc-800/60 my-4" />,
+      hr: () => <div className="border-t border-zinc-200 dark:border-zinc-800/60 my-4" />,
     }),
     [videoId]
   );
 
   return (
     <div className="space-y-4">
-      {/* Language Toggle */}
       {hasBilingual && (
-        <div className="flex items-center gap-1 bg-zinc-800/60 rounded-lg p-1 w-fit">
+        <div className="flex items-center gap-1 bg-zinc-200 dark:bg-zinc-800/60 rounded-lg p-1 w-fit">
           <button
             onClick={() => setLang("en")}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
@@ -182,7 +176,6 @@ export default function SummaryDisplay({
         </div>
       )}
 
-      {/* Markdown Content */}
       <div className="summary-markdown">
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
           {content}
