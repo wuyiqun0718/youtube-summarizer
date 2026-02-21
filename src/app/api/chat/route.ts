@@ -43,13 +43,27 @@ export async function POST(req: NextRequest) {
     const history = getChatHistory(videoId);
     history.push({ role: "user", content: message });
 
-    const transcript = video.captions_raw.slice(0, 12000);
+    // Format captions into readable timestamped text
+    let captions: { start: number; text: string }[] = [];
+    try { captions = JSON.parse(video.captions_raw); } catch { /* ignore */ }
 
-    const systemPrompt = `You are a helpful assistant for discussing a YouTube video. Below is the video transcript.
+    const fmtTime = (s: number) => {
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return `${m}:${sec.toString().padStart(2, "0")}`;
+    };
+
+    const transcript = captions
+      .map(c => `[${fmtTime(c.start)}](t:${Math.round(c.start)}) ${c.text}`)
+      .join("\n")
+      .slice(0, 15000);
+
+    const systemPrompt = `You are a helpful assistant for discussing a YouTube video. Below is the video transcript with timestamps.
 
 ## Your behavior
 - Answer questions about the video using the transcript as context.
-- When referencing specific moments, embed timestamps as [MM:SS](t:seconds), e.g. [2:15](t:135).
+- When referencing specific moments, use the EXACT timestamps from the transcript. Format: [MM:SS](t:seconds), e.g. [2:15](t:135).
+- NEVER invent or guess timestamps. Only use timestamps that appear in the transcript below.
 - Be helpful for both video-specific and general questions related to the topic.
 - Respond in the same language as the user's message.
 - Keep responses concise and useful.
