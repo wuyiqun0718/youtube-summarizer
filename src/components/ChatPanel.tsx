@@ -46,11 +46,38 @@ function TimestampLink({
   );
 }
 
+export type { ChatMessage };
+
+function loadHistory(videoId: string): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(`chat:${videoId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveHistory(videoId: string, messages: ChatMessage[]) {
+  try { localStorage.setItem(`chat:${videoId}`, JSON.stringify(messages)); } catch {}
+}
+
 export default function ChatPanel({ videoId }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(videoId));
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevVideoIdRef = useRef(videoId);
+
+  // Reload history when videoId changes
+  useEffect(() => {
+    if (prevVideoIdRef.current !== videoId) {
+      prevVideoIdRef.current = videoId;
+      setMessages(loadHistory(videoId));
+    }
+  }, [videoId]);
+
+  // Persist to localStorage on change
+  useEffect(() => {
+    saveHistory(videoId, messages);
+  }, [videoId, messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

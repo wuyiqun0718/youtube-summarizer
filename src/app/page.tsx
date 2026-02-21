@@ -178,26 +178,23 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Tab content */}
-            {activeTab === "summary" ? (
-              <div className="p-6 overflow-y-auto flex-1">
-                <SummaryDisplay
-                  en={video.en}
-                  zh={video.zh}
-                  videoId={video.youtube_id}
-                />
-                {video.captions && video.captions.length > 0 && (
-                  <TranscriptPanel captions={video.captions} videoId={video.youtube_id} />
-                )}
-              </div>
-            ) : (
-              <div className="flex-1 overflow-hidden">
-                <ChatPanel
-                  videoId={video.youtube_id}
-                  captions={video.captions || []}
-                />
-              </div>
-            )}
+            {/* Tab content — both mounted, toggle visibility to preserve state */}
+            <div className={`p-6 overflow-y-auto flex-1 ${activeTab === "summary" ? "" : "hidden"}`}>
+              <SummaryDisplay
+                en={video.en}
+                zh={video.zh}
+                videoId={video.youtube_id}
+              />
+              {video.captions && video.captions.length > 0 && (
+                <TranscriptPanel captions={video.captions} videoId={video.youtube_id} />
+              )}
+            </div>
+            <div className={`flex-1 overflow-hidden ${activeTab === "chat" ? "" : "hidden"}`}>
+              <ChatPanel
+                videoId={video.youtube_id}
+                captions={video.captions || []}
+              />
+            </div>
           </div>
         </div>
       )}
