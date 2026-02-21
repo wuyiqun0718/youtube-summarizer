@@ -29,7 +29,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoData | null>(null);
   const [favorited, setFavorited] = useState(false);
-  const [activeTab, setActiveTab] = useState<"summary" | "chat">("summary");
+  const [activeTab, setActiveTab] = useState<"summary" | "chat" | "transcript">("summary");
 
   useEffect(() => {
     const videoId = searchParams.get("v");
@@ -176,6 +176,18 @@ export default function Home() {
               >
                 Chat
               </button>
+              {video.captions && video.captions.length > 0 && (
+                <button
+                  onClick={() => setActiveTab("transcript")}
+                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                    activeTab === "transcript"
+                      ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-500"
+                      : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+                  }`}
+                >
+                  Transcript
+                </button>
+              )}
             </div>
 
             {/* Tab content — both mounted, toggle visibility to preserve state */}
@@ -185,9 +197,6 @@ export default function Home() {
                 zh={video.zh}
                 videoId={video.youtube_id}
               />
-              {video.captions && video.captions.length > 0 && (
-                <TranscriptPanel captions={video.captions} videoId={video.youtube_id} />
-              )}
             </div>
             <div className={`flex-1 overflow-hidden ${activeTab === "chat" ? "" : "hidden"}`}>
               <ChatPanel
@@ -195,6 +204,11 @@ export default function Home() {
                 captions={video.captions || []}
               />
             </div>
+            {video.captions && video.captions.length > 0 && (
+              <div className={`p-6 overflow-y-auto flex-1 ${activeTab === "transcript" ? "" : "hidden"}`}>
+                <TranscriptPanel captions={video.captions} videoId={video.youtube_id} />
+              </div>
+            )}
           </div>
         </div>
       )}
