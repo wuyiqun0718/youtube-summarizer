@@ -177,7 +177,11 @@ export default function SummaryDisplay({
       )}
 
       <div className="summary-markdown">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={components}
+          urlTransform={(url) => url}
+        >
           {content}
         </ReactMarkdown>
       </div>
