@@ -1,21 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getVideoByYoutubeId } from "@/lib/db";
+import { getVideoByYoutubeId, getChatHistory, saveChatHistory } from "@/lib/db";
 
 const QWEN_API_URL =
   "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const QWEN_MODEL = "qwen3.5-plus";
 
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const { videoId, message, history = [] } = (await req.json()) as {
+    const { videoId, message } = (await req.json()) as {
       videoId: string;
       message: string;
-      history: ChatMessage[];
     };
 
     if (!videoId || !message) {
@@ -41,6 +35,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Load history & append user message
+    const history = getChatHistory(videoId);
+    history.push({ role: "user", content: message });
+
     const transcript = video.captions_raw.slice(0, 12000);
 
     const systemPrompt = `You are a helpful assistant for discussing a YouTube video. Below is the video transcript.
@@ -57,8 +55,7 @@ ${transcript}`;
 
     const messages = [
       { role: "system" as const, content: systemPrompt },
-      ...history.map((m) => ({ role: m.role, content: m.content })),
-      { role: "user" as const, content: message },
+      ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
     ];
 
     const response = await fetch(QWEN_API_URL, {
@@ -85,6 +82,10 @@ ${transcript}`;
 
     const data = await response.json();
     const reply = data.choices?.[0]?.message?.content || "No response.";
+
+    // Save both messages
+    history.push({ role: "assistant", content: reply });
+    saveChatHistory(videoId, history);
 
     return NextResponse.json({ reply });
   } catch (err) {

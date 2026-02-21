@@ -48,36 +48,22 @@ function TimestampLink({
 
 export type { ChatMessage };
 
-function loadHistory(videoId: string): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(`chat:${videoId}`);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveHistory(videoId: string, messages: ChatMessage[]) {
-  try { localStorage.setItem(`chat:${videoId}`, JSON.stringify(messages)); } catch {}
-}
-
 export default function ChatPanel({ videoId }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(videoId));
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const prevVideoIdRef = useRef(videoId);
 
-  // Reload history when videoId changes
+  // Load chat history from DB
   useEffect(() => {
-    if (prevVideoIdRef.current !== videoId) {
-      prevVideoIdRef.current = videoId;
-      setMessages(loadHistory(videoId));
-    }
+    setHistoryLoaded(false);
+    fetch(`/api/chat/history?videoId=${videoId}`)
+      .then(res => res.json())
+      .then(data => setMessages(data.messages || []))
+      .catch(() => setMessages([]))
+      .finally(() => setHistoryLoaded(true));
   }, [videoId]);
-
-  // Persist to localStorage on change
-  useEffect(() => {
-    saveHistory(videoId, messages);
-  }, [videoId, messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -126,7 +112,7 @@ export default function ChatPanel({ videoId }: ChatPanelProps) {
     <div className="flex flex-col h-full">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.length === 0 && !loading && (
+        {messages.length === 0 && !loading && historyLoaded && (
           <div className="text-center text-zinc-400 dark:text-zinc-500 py-12 text-sm">
             Ask anything about this video...
           </div>
@@ -175,7 +161,7 @@ export default function ChatPanel({ videoId }: ChatPanelProps) {
 
       {/* Input */}
       <div className="border-t border-zinc-200 dark:border-zinc-700 p-3">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <input
             type="text"
             value={input}
@@ -191,6 +177,20 @@ export default function ChatPanel({ videoId }: ChatPanelProps) {
           >
             Send
           </button>
+          {messages.length > 0 && (
+            <button
+              onClick={async () => {
+                await fetch(`/api/chat/history?videoId=${videoId}`, { method: "DELETE" });
+                setMessages([]);
+              }}
+              className="text-zinc-400 hover:text-red-400 transition-colors shrink-0 p-2"
+              title="Clear chat"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -41,9 +41,13 @@ function getDb(): Database.Database {
     for (const sql of migrations) {
       try { db.exec(sql); } catch { /* column already exists */ }
     }
+
+    // Add chat_history column
+    try { db.exec(`ALTER TABLE videos ADD COLUMN chat_history TEXT NOT NULL DEFAULT '[]'`); } catch { /* exists */ }
   }
   return db;
 }
+
 
 export interface VideoRow {
   id: number;
@@ -53,6 +57,7 @@ export interface VideoRow {
   summary_en: string;
   summary_zh: string;
   captions_raw: string;
+  chat_history: string;
   favorited: number;
   created_at: string;
 }
@@ -112,6 +117,29 @@ export function deleteVideo(id: number): void {
 export function deleteVideoByYoutubeId(youtubeId: string): void {
   const db = getDb();
   db.prepare("DELETE FROM videos WHERE youtube_id = ?").run(youtubeId);
+}
+
+// Chat history (stored as JSON in videos.chat_history)
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export function getChatHistory(youtubeId: string): ChatMessage[] {
+  const db = getDb();
+  const row = db.prepare("SELECT chat_history FROM videos WHERE youtube_id = ?").get(youtubeId) as { chat_history: string } | undefined;
+  if (!row) return [];
+  try { return JSON.parse(row.chat_history); } catch { return []; }
+}
+
+export function saveChatHistory(youtubeId: string, messages: ChatMessage[]): void {
+  const db = getDb();
+  db.prepare("UPDATE videos SET chat_history = ? WHERE youtube_id = ?").run(JSON.stringify(messages), youtubeId);
+}
+
+export function clearChatHistory(youtubeId: string): void {
+  const db = getDb();
+  db.prepare("UPDATE videos SET chat_history = '[]' WHERE youtube_id = ?").run(youtubeId);
 }
 
 export function toggleFavorite(youtubeId: string): boolean {
