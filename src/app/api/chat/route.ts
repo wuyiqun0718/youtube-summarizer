@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     const transcript = captions
       .map(c => `[${fmtTime(c.start)}](t:${Math.round(c.start)}) ${c.text}`)
       .join("\n")
-      .slice(0, 15000);
+      .slice(0, 100000);
 
     const systemPrompt = `You are a helpful assistant for discussing a YouTube video. Below is the video transcript with timestamps.
 
