@@ -1,26 +1,84 @@
 "use client";
 
-import { useState, useMemo, type ComponentPropsWithoutRef } from "react";
+import { useState, useRef, useCallback, useMemo, type ComponentPropsWithoutRef } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { seekTo } from "./YouTubePlayer";
+
+interface FrameData {
+  timestamp: number;
+  imagePath: string;
+}
 
 interface SummaryDisplayProps {
   en?: string;
   zh?: string;
   videoId?: string;
+  frames?: FrameData[];
+  framesLoading?: boolean;
+  onAnalyzeFrames?: () => void;
+}
+
+/**
+ * Popover rendered via portal to avoid overflow clipping.
+ * Supports mouse entering the popover without it disappearing.
+ */
+function FramePopover({
+  frame,
+  pos,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  frame: FrameData;
+  pos: { top: number; left: number };
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  return createPortal(
+    <div
+      className="fixed z-[100]"
+      style={{
+        top: pos.top,
+        left: pos.left,
+        transform: "translate(-50%, -100%)",
+        paddingBottom: 12,
+      }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      <div className="bg-zinc-900 rounded-lg shadow-2xl border border-zinc-700 p-2 w-96">
+        <img
+          src={frame.imagePath}
+          alt={`Frame at ${frame.timestamp}s`}
+          className="w-full rounded"
+          loading="eager"
+        />
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 function TimestampLink({
   href,
   children,
   videoId,
+  frames,
 }: {
   href?: string;
   children?: React.ReactNode;
   videoId?: string;
+  frames?: FrameData[];
 }) {
-  const match = href?.match(/^t:(\d+)$/);
+  const [popoverPos, setPopoverPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const match = href?.match(/^tv?:(\d+)$/);
   if (!match) {
     return (
       <a
@@ -35,28 +93,81 @@ function TimestampLink({
   }
 
   const seconds = parseInt(match[1], 10);
+  const isVisual = href?.startsWith("tv:");
+  const frame = isVisual
+    ? frames?.find((f) => Math.abs(f.timestamp - seconds) <= 5)
+    : undefined;
+
+  const cancelHide = useCallback(() => {
+    if (hideTimer.current) {
+      clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }, []);
+
+  const scheduleHide = useCallback(() => {
+    cancelHide();
+    hideTimer.current = setTimeout(() => setPopoverPos(null), 150);
+  }, [cancelHide]);
+
+  const handleMouseEnter = () => {
+    cancelHide();
+    if (ref.current && frame) {
+      const rect = ref.current.getBoundingClientRect();
+      const popoverWidth = 384;
+      let left = rect.left + rect.width / 2;
+      left = Math.max(
+        popoverWidth / 2 + 8,
+        Math.min(left, window.innerWidth - popoverWidth / 2 - 8)
+      );
+      setPopoverPos({ top: rect.top - 8, left });
+    }
+  };
+
   return (
-    <button
-      onClick={() => seekTo(seconds)}
-      className="inline-flex items-center gap-1 text-sm font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-md hover:bg-purple-500/20 hover:text-purple-300 transition-all cursor-pointer"
-      title={`Jump to ${children}`}
+    <span
+      ref={ref}
+      className="inline-block"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={scheduleHide}
     >
-      {children}
-      {videoId && (
-        <a
-          href={`https://www.youtube.com/watch?v=${videoId}&t=${seconds}s`}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="text-zinc-600 hover:text-red-400 transition-colors ml-0.5"
-          title="Open on YouTube"
-        >
-          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M10 6V8H5V19H16V14H18V20C18 20.5523 17.5523 21 17 21H4C3.44772 21 3 20.5523 3 20V7C3 6.44772 3.44772 6 4 6H10ZM21 3V11H19V6.413L11.2071 14.2071L9.79289 12.7929L17.585 5H13V3H21Z" />
-          </svg>
-        </a>
+      <button
+        onClick={() => seekTo(seconds)}
+        className="inline-flex items-center gap-1 text-sm font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-md hover:bg-purple-500/20 hover:text-purple-300 transition-all cursor-pointer"
+        title={`Jump to ${children}`}
+      >
+        {children}
+        {frame && (
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+        )}
+        {videoId && (
+          <a
+            href={`https://www.youtube.com/watch?v=${videoId}&t=${seconds}s`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-zinc-600 hover:text-red-400 transition-colors ml-0.5"
+            title="Open on YouTube"
+          >
+            <svg
+              className="w-3 h-3"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M10 6V8H5V19H16V14H18V20C18 20.5523 17.5523 21 17 21H4C3.44772 21 3 20.5523 3 20V7C3 6.44772 3.44772 6 4 6H10ZM21 3V11H19V6.413L11.2071 14.2071L9.79289 12.7929L17.585 5H13V3H21Z" />
+            </svg>
+          </a>
+        )}
+      </button>
+      {popoverPos && frame && (
+        <FramePopover
+          frame={frame}
+          pos={popoverPos}
+          onMouseEnter={cancelHide}
+          onMouseLeave={scheduleHide}
+        />
       )}
-    </button>
+    </span>
   );
 }
 
@@ -64,6 +175,9 @@ export default function SummaryDisplay({
   en,
   zh,
   videoId,
+  frames,
+  framesLoading,
+  onAnalyzeFrames,
 }: SummaryDisplayProps) {
   const [lang, setLang] = useState<"en" | "zh">("en");
 
@@ -77,7 +191,7 @@ export default function SummaryDisplay({
   const components = useMemo(
     () => ({
       a: ({ href, children }: ComponentPropsWithoutRef<"a">) => (
-        <TimestampLink href={href} videoId={videoId}>
+        <TimestampLink href={href} videoId={videoId} frames={frames}>
           {children}
         </TimestampLink>
       ),
@@ -97,7 +211,9 @@ export default function SummaryDisplay({
         </h3>
       ),
       p: ({ children }: ComponentPropsWithoutRef<"p">) => (
-        <p className="text-[15px] leading-7 text-zinc-600 dark:text-zinc-300 mb-3">{children}</p>
+        <p className="text-[15px] leading-7 text-zinc-600 dark:text-zinc-300 mb-3">
+          {children}
+        </p>
       ),
       ul: ({ children }: ComponentPropsWithoutRef<"ul">) => (
         <ul className="space-y-1.5 mb-3 ml-1">{children}</ul>
@@ -134,7 +250,9 @@ export default function SummaryDisplay({
         </td>
       ),
       strong: ({ children }: ComponentPropsWithoutRef<"strong">) => (
-        <strong className="text-zinc-900 dark:text-zinc-100 font-semibold">{children}</strong>
+        <strong className="text-zinc-900 dark:text-zinc-100 font-semibold">
+          {children}
+        </strong>
       ),
       em: ({ children }: ComponentPropsWithoutRef<"em">) => (
         <em className="text-zinc-400">{children}</em>
@@ -144,9 +262,11 @@ export default function SummaryDisplay({
           {children}
         </code>
       ),
-      hr: () => <div className="border-t border-zinc-200 dark:border-zinc-800/60 my-4" />,
+      hr: () => (
+        <div className="border-t border-zinc-200 dark:border-zinc-800/60 my-4" />
+      ),
     }),
-    [videoId]
+    [videoId, frames]
   );
 
   return (
@@ -173,6 +293,46 @@ export default function SummaryDisplay({
           >
             中文
           </button>
+        </div>
+      )}
+
+      {/* Frame analysis status */}
+      {onAnalyzeFrames && (!frames || frames.length === 0) && !framesLoading && (
+        <button
+          onClick={onAnalyzeFrames}
+          className="px-4 py-2 text-sm rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+        >
+          🖼 Analyze Key Frames
+        </button>
+      )}
+      {framesLoading && (
+        <div className="flex items-center gap-2 text-sm text-zinc-400">
+          <svg
+            className="animate-spin h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          Extracting & analyzing key frames...
+        </div>
+      )}
+      {frames && frames.length > 0 && (
+        <div className="text-xs text-zinc-500">
+          ✨ {frames.length} key frames analyzed — hover timestamps to
+          preview
         </div>
       )}
 

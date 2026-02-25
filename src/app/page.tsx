@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import UrlInput from "@/components/UrlInput";
 import YouTubePlayer from "@/components/YouTubePlayer";
 import SummaryDisplay from "@/components/SummaryDisplay";
@@ -23,13 +23,24 @@ interface VideoData {
   favorited?: boolean;
 }
 
+interface FrameData {
+  timestamp: number;
+  imagePath: string;
+}
+
 export default function Home() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoData | null>(null);
   const [favorited, setFavorited] = useState(false);
   const [activeTab, setActiveTab] = useState<"summary" | "chat" | "transcript">("summary");
+  const [frames, setFrames] = useState<FrameData[]>([]);
+  const [framesLoading, setFramesLoading] = useState(false);
+  const [showResummarize, setShowResummarize] = useState(false);
+  const [resummarizePrompt, setResummarizePrompt] = useState("");
+  const [allVisual, setAllVisual] = useState(false);
 
   useEffect(() => {
     const videoId = searchParams.get("v");
@@ -54,6 +65,46 @@ export default function Home() {
     }
   }, [searchParams]);
 
+  // Fetch existing frames when video changes
+  useEffect(() => {
+    if (!video?.youtube_id) {
+      setFrames([]);
+      return;
+    }
+    fetch(`/api/frames?videoId=${video.youtube_id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.frames?.length > 0) setFrames(d.frames);
+      })
+      .catch(() => {});
+  }, [video?.youtube_id]);
+
+  // Preload frame images for instant hover
+  useEffect(() => {
+    frames.forEach((f) => {
+      const img = new Image();
+      img.src = f.imagePath;
+    });
+  }, [frames]);
+
+  const handleAnalyzeFrames = async () => {
+    if (!video) return;
+    setFramesLoading(true);
+    try {
+      const res = await fetch("/api/frames", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: video.youtube_id }),
+      });
+      const data = await res.json();
+      if (data.frames) setFrames(data.frames);
+    } catch (err) {
+      console.error("Frame analysis failed:", err);
+    } finally {
+      setFramesLoading(false);
+    }
+  };
+
   const handleFavorite = async () => {
     if (!video) return;
     try {
@@ -67,6 +118,59 @@ export default function Home() {
     } catch { /* ignore */ }
   };
 
+  const handleResummarize = async (customPrompt: string) => {
+    if (!video) return;
+    setShowResummarize(false);
+    setLoading(true);
+    setError(null);
+    setFrames([]);
+
+    try {
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: `https://www.youtube.com/watch?v=${video.youtube_id}`,
+          title: video.title,
+          prompt: customPrompt,
+          force: true,
+          allVisual,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to re-summarize");
+
+      const vid = {
+        youtube_id: data.video.youtube_id,
+        title: data.video.title,
+        en: data.video.en || "",
+        zh: data.video.zh || "",
+        captions: data.video.captions,
+      };
+      setVideo(vid);
+      setFavorited(!!data.video.favorited);
+
+      // Auto-extract frames when allVisual is on
+      if (allVisual) {
+        setFramesLoading(true);
+        fetch("/api/frames", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoId: vid.youtube_id }),
+        })
+          .then((r) => r.json())
+          .then((d) => { if (d.frames) setFrames(d.frames); })
+          .catch(() => {})
+          .finally(() => setFramesLoading(false));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (url: string, prompt?: string) => {
     setLoading(true);
     setError(null);
@@ -75,7 +179,7 @@ export default function Home() {
       const res = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, prompt }),
+        body: JSON.stringify({ url, prompt, allVisual }),
       });
 
       const data = await res.json();
@@ -84,14 +188,30 @@ export default function Home() {
         throw new Error(data.error || "Failed to summarize video");
       }
 
-      setVideo({
+      const vid = {
         youtube_id: data.video.youtube_id,
         title: data.video.title,
         en: data.video.en || "",
         zh: data.video.zh || "",
         captions: data.video.captions,
-      });
+      };
+      setVideo(vid);
       setFavorited(!!data.video.favorited);
+      router.replace(`/?v=${data.video.youtube_id}`, { scroll: false });
+
+      // Auto-extract frames when allVisual is on
+      if (allVisual && !data.cached) {
+        setFramesLoading(true);
+        fetch("/api/frames", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoId: vid.youtube_id }),
+        })
+          .then((r) => r.json())
+          .then((d) => { if (d.frames) setFrames(d.frames); })
+          .catch(() => {})
+          .finally(() => setFramesLoading(false));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -101,6 +221,57 @@ export default function Home() {
 
   return (
     <div className="max-w-[1600px] mx-auto px-6 py-8">
+      {/* Re-summarize Modal */}
+      {showResummarize && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+              Re-summarize
+            </h3>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Optionally provide custom instructions for this summary.
+            </p>
+            <textarea
+              value={resummarizePrompt}
+              onChange={(e) => setResummarizePrompt(e.target.value)}
+              placeholder="e.g. Focus on practical exercises and include more visual timestamps..."
+              className="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-900 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none"
+              rows={3}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleResummarize(resummarizePrompt);
+                }
+              }}
+            />
+            <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allVisual}
+                onChange={(e) => setAllVisual(e.target.checked)}
+                className="rounded border-zinc-300 dark:border-zinc-600 text-blue-500 focus:ring-blue-500/40"
+              />
+              🖼 Extract frames for all timestamps
+            </label>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowResummarize(false)}
+                className="px-4 py-2 text-sm rounded-xl border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleResummarize(resummarizePrompt)}
+                className="px-4 py-2 text-sm rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors"
+              >
+                Summarize
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">
@@ -114,7 +285,7 @@ export default function Home() {
 
       {/* URL Input */}
       <div className="max-w-2xl mx-auto mb-8">
-        <UrlInput onSubmit={handleSubmit} loading={loading} />
+        <UrlInput onSubmit={handleSubmit} loading={loading} allVisual={allVisual} onAllVisualChange={setAllVisual} />
       </div>
 
       {/* Error */}
@@ -133,6 +304,16 @@ export default function Home() {
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 truncate flex-1">
                 {video.title}
               </h2>
+              <button
+                onClick={() => { setResummarizePrompt(""); setShowResummarize(true); }}
+                disabled={loading}
+                className="shrink-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-zinc-500 hover:text-blue-500 disabled:opacity-40"
+                title="Re-summarize"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
               <button
                 onClick={handleFavorite}
                 className="shrink-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
@@ -196,6 +377,9 @@ export default function Home() {
                 en={video.en}
                 zh={video.zh}
                 videoId={video.youtube_id}
+                frames={frames}
+                framesLoading={framesLoading}
+                onAnalyzeFrames={handleAnalyzeFrames}
               />
             </div>
             <div className={`flex-1 overflow-hidden ${activeTab === "chat" ? "" : "hidden"}`}>

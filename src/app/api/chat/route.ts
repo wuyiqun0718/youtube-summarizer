@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
-import { getVideoByYoutubeId, getChatHistory, saveChatHistory } from "@/lib/db";
+import { getVideoByYoutubeId, getChatHistory, saveChatHistory, getFramesByVideoId } from "@/lib/db";
+import fs from "fs";
+import path from "path";
 
 // Ensure Next.js doesn't buffer or cache this route
 export const dynamic = "force-dynamic";
@@ -7,13 +9,14 @@ export const runtime = "nodejs";
 
 const QWEN_API_URL =
   "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
-const QWEN_MODEL = "qwen-plus"; // Non-reasoning model for fast chat
+const QWEN_MODEL = "qwen-vl-plus"; // Vision-language model for frame-aware chat
 
 export async function POST(req: NextRequest) {
   try {
-    const { videoId, message } = (await req.json()) as {
+    const { videoId, message, includeTranscript } = (await req.json()) as {
       videoId: string;
       message: string;
+      includeTranscript?: boolean;
     };
 
     if (!videoId || !message) {
@@ -53,28 +56,64 @@ export async function POST(req: NextRequest) {
       return `${m}:${sec.toString().padStart(2, "0")}`;
     };
 
-    const transcript = captions
-      .map(c => `[${fmtTime(c.start)}](t:${Math.round(c.start)}) ${c.text}`)
-      .join("\n")
-      .slice(0, 100000);
+    // Build context: summary (default) + optional full transcript
+    const summary = video.summary_zh || video.summary_en || "";
+    const transcript = includeTranscript
+      ? captions
+          .map(c => `[${fmtTime(c.start)}](t:${Math.round(c.start)}) ${c.text}`)
+          .join("\n")
+          .slice(0, 100000)
+      : "";
 
-    const systemPrompt = `You are a helpful assistant for discussing a YouTube video. Below is the video transcript with timestamps.
+    // Load frame images for visual context
+    const frameRows = getFramesByVideoId(videoId);
+    const frameImages: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+    for (const f of frameRows) {
+      const framePath = path.join(process.cwd(), "public", f.image_path);
+      if (fs.existsSync(framePath)) {
+        const base64 = fs.readFileSync(framePath).toString("base64");
+        frameImages.push({ type: "text", text: `[${fmtTime(f.timestamp)}]` });
+        frameImages.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } });
+      }
+    }
+
+    const contextSection = includeTranscript
+      ? `## Video summary\n${summary}\n\n## Full transcript\n${transcript}`
+      : `## Video summary\n${summary}`;
+
+    const systemPrompt = `You are a helpful assistant for discussing a YouTube video titled "${video.title}".
 
 ## Your behavior
-- Answer questions about the video using the transcript as context.
-- When referencing specific moments, use the EXACT timestamps from the transcript. Format: [MM:SS](t:seconds), e.g. [2:15](t:135).
-- NEVER invent or guess timestamps. Only use timestamps that appear in the transcript below.
+- Answer questions about the video using the summary${includeTranscript ? ", transcript," : ""} and key frame images as context.
+- You can see the key frame screenshots from the video — use them to answer questions about what appears on screen.
+- **CRITICAL timestamp rule**: Every time reference MUST be a Markdown link: [MM:SS](t:seconds) or [MM:SS](tv:seconds). Example: [2:15](t:135), [14:02](tv:842). NEVER write plain text like "2:15", "(7:53 - 8:47)", or "at 14:02". Always wrap in link format.
 - Be helpful for both video-specific and general questions related to the topic.
 - Respond in the same language as the user's message.
 - Keep responses concise and useful.
 
-## Video transcript
-${transcript}`;
+${contextSection}`;
 
-    const messages = [
-      { role: "system" as const, content: systemPrompt },
-      ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+    // Build messages: system + optional frame images + chat history
+    const messages: Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }> = [
+      { role: "system", content: systemPrompt },
     ];
+
+    // Inject frame images as a context message
+    if (frameImages.length > 0) {
+      messages.push({
+        role: "user",
+        content: [
+          { type: "text", text: "以下是视频的关键帧截图，供后续对话参考：" },
+          ...frameImages,
+        ],
+      });
+      messages.push({ role: "assistant", content: "好的，我已看到这些关键帧截图，可以结合画面内容回答问题。" });
+    }
+
+    // Append chat history
+    messages.push(
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+    );
 
     const response = await fetch(QWEN_API_URL, {
       method: "POST",

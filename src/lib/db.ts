@@ -44,6 +44,31 @@ function getDb(): Database.Database {
 
     // Add chat_history column
     try { db.exec(`ALTER TABLE videos ADD COLUMN chat_history TEXT NOT NULL DEFAULT '[]'`); } catch { /* exists */ }
+
+    // Add prompt column (user's custom guideline)
+    try { db.exec(`ALTER TABLE videos ADD COLUMN prompt TEXT NOT NULL DEFAULT ''`); } catch { /* exists */ }
+
+    // Add chapters column (JSON array from YouTube)
+    try { db.exec(`ALTER TABLE videos ADD COLUMN chapters TEXT NOT NULL DEFAULT '[]'`); } catch { /* exists */ }
+
+    // Frames table (visual key frames)
+    // Migration: drop old table with analysis column if it exists
+    const hasAnalysis = db.prepare(
+      "SELECT COUNT(*) as cnt FROM pragma_table_info('frames') WHERE name='analysis'"
+    ).get() as { cnt: number };
+    if (hasAnalysis.cnt > 0) {
+      db.exec("DROP TABLE frames");
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS frames (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        youtube_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        image_path TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(youtube_id, timestamp)
+      )
+    `);
   }
   return db;
 }
@@ -58,6 +83,8 @@ export interface VideoRow {
   summary_zh: string;
   captions_raw: string;
   chat_history: string;
+  prompt: string;
+  chapters: string;
   favorited: number;
   created_at: string;
 }
@@ -69,17 +96,21 @@ export function upsertVideo(data: {
   summary_en: string;
   summary_zh: string;
   captions_raw: string;
+  prompt?: string;
+  chapters?: string;
 }): VideoRow {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO videos (youtube_id, title, thumbnail, summary_en, summary_zh, captions_raw)
-    VALUES (@youtube_id, @title, @thumbnail, @summary_en, @summary_zh, @captions_raw)
+    INSERT INTO videos (youtube_id, title, thumbnail, summary_en, summary_zh, captions_raw, prompt, chapters)
+    VALUES (@youtube_id, @title, @thumbnail, @summary_en, @summary_zh, @captions_raw, @prompt, @chapters)
     ON CONFLICT(youtube_id) DO UPDATE SET
       title = @title,
       thumbnail = @thumbnail,
       summary_en = @summary_en,
       summary_zh = @summary_zh,
       captions_raw = @captions_raw,
+      prompt = @prompt,
+      chapters = @chapters,
       created_at = datetime('now')
   `);
 
@@ -90,6 +121,8 @@ export function upsertVideo(data: {
     summary_en: data.summary_en,
     summary_zh: data.summary_zh,
     captions_raw: data.captions_raw,
+    prompt: data.prompt || "",
+    chapters: data.chapters || "[]",
   });
 
   return getVideoByYoutubeId(data.youtube_id)!;
@@ -149,4 +182,46 @@ export function toggleFavorite(youtubeId: string): boolean {
   const newVal = video.favorited ? 0 : 1;
   db.prepare("UPDATE videos SET favorited = ? WHERE youtube_id = ?").run(newVal, youtubeId);
   return newVal === 1;
+}
+
+// --- Frames (visual analysis) ---
+
+export interface FrameRow {
+  id: number;
+  youtube_id: string;
+  timestamp: number;
+  image_path: string;
+  created_at: string;
+}
+
+export function upsertFrames(
+  videoId: string,
+  frames: { timestamp: number; imagePath: string }[]
+): void {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT INTO frames (youtube_id, timestamp, image_path)
+    VALUES (?, ?, ?)
+    ON CONFLICT(youtube_id, timestamp) DO UPDATE SET
+      image_path = excluded.image_path,
+      created_at = datetime('now')
+  `);
+  const tx = db.transaction(() => {
+    for (const f of frames) {
+      stmt.run(videoId, f.timestamp, f.imagePath);
+    }
+  });
+  tx();
+}
+
+export function getFramesByVideoId(videoId: string): FrameRow[] {
+  const db = getDb();
+  return db
+    .prepare("SELECT * FROM frames WHERE youtube_id = ? ORDER BY timestamp")
+    .all(videoId) as FrameRow[];
+}
+
+export function deleteFramesByVideoId(videoId: string): void {
+  const db = getDb();
+  db.prepare("DELETE FROM frames WHERE youtube_id = ?").run(videoId);
 }

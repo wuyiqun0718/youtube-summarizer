@@ -22,7 +22,7 @@ function TimestampLink({
   href?: string;
   children?: React.ReactNode;
 }) {
-  const match = href?.match(/^t:(\d+)$/);
+  const match = href?.match(/^tv?:(\d+)$/);
   if (!match) {
     return (
       <a
@@ -53,6 +53,7 @@ export default function ChatPanel({ videoId }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [includeTranscript, setIncludeTranscript] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load chat history from DB
@@ -83,7 +84,7 @@ export default function ChatPanel({ videoId }: ChatPanelProps) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId, message: text }),
+        body: JSON.stringify({ videoId, message: text, includeTranscript }),
       });
 
       if (!res.ok) {
@@ -193,7 +194,16 @@ export default function ChatPanel({ videoId }: ChatPanelProps) {
       </div>
 
       {/* Input */}
-      <div className="border-t border-zinc-200 dark:border-zinc-700 p-3">
+      <div className="border-t border-zinc-200 dark:border-zinc-700 p-3 space-y-2">
+        <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={includeTranscript}
+            onChange={(e) => setIncludeTranscript(e.target.checked)}
+            className="rounded border-zinc-300 dark:border-zinc-600 text-blue-500 focus:ring-blue-500/40"
+          />
+          📜 Include full transcript
+        </label>
         <div className="flex gap-2 items-center">
           <input
             type="text"

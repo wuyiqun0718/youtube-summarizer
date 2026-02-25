@@ -5,9 +5,11 @@ import { useState, FormEvent } from "react";
 interface UrlInputProps {
   onSubmit: (url: string, prompt?: string) => void;
   loading: boolean;
+  allVisual: boolean;
+  onAllVisualChange: (value: boolean) => void;
 }
 
-export default function UrlInput({ onSubmit, loading }: UrlInputProps) {
+export default function UrlInput({ onSubmit, loading, allVisual, onAllVisualChange }: UrlInputProps) {
   const [url, setUrl] = useState("");
   const [prompt, setPrompt] = useState("");
 
@@ -49,7 +51,16 @@ export default function UrlInput({ onSubmit, loading }: UrlInputProps) {
         </div>
 
         {/* Bottom bar */}
-        <div className="flex justify-end px-4 py-2.5 bg-zinc-100/50 dark:bg-zinc-700/30">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-100/50 dark:bg-zinc-700/30">
+          <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allVisual}
+              onChange={(e) => onAllVisualChange(e.target.checked)}
+              className="rounded border-zinc-300 dark:border-zinc-600 text-blue-500 focus:ring-blue-500/40 w-3.5 h-3.5"
+            />
+            🖼 Extract all frames
+          </label>
           <button
             type="submit"
             disabled={!url.trim() || loading}
