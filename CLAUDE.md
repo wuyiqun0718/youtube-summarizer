@@ -20,7 +20,8 @@ Next.js 应用，粘贴 YouTube 链接 → 获取字幕 → LLM 生成双语摘�
 src/
 ├── app/
 │   ├── page.tsx              # 主页：URL输入、播放器、摘要、聊天
-│   ├── history/page.tsx      # 历史记录页
+│   ├── history/page.tsx      # 历史记录页（含标签筛选）
+│   ├── tags/page.tsx          # 标签管理页（CRUD、颜色选择）
 │   ├── layout.tsx
 │   └── api/
 │       ├── summarize/route.ts   # 核心：字幕+章节获取→LLM摘要→存DB
@@ -30,19 +31,22 @@ src/
 │       ├── frames/route.ts      # GET/POST 帧提取
 │       ├── history/route.ts     # 历史列表
 │       ├── favorite/route.ts
+│       ├── tags/route.ts        # GET/POST/PUT/DELETE 标签管理
 │       └── videos/[id]/
 │           ├── route.ts         # 删除视频
-│           └── favorite/route.ts
+│           ├── favorite/route.ts
+│           └── tags/route.ts    # GET/PUT 视频标签
 ├── components/
 │   ├── SummaryDisplay.tsx    # 摘要渲染，含 FramePopover（tv: 时间戳悬浮预览）
 │   ├── ChatPanel.tsx         # 聊天面板，含 includeTranscript 开关
 │   ├── TranscriptPanel.tsx   # 字幕面板
 │   ├── YouTubePlayer.tsx     # 嵌入式播放器
 │   ├── UrlInput.tsx          # URL 输入框
+│   ├── VideoTagEditor.tsx    # 视频标签编辑器（搜索、选择、创建标签）
 │   ├── Navbar.tsx
 │   └── ThemeProvider.tsx
 ├── lib/
-│   ├── db.ts                 # SQLite schema + CRUD（videos, frames 表）
+│   ├── db.ts                 # SQLite schema + CRUD（videos, frames, tags, video_tags 表）
 │   ├── llm.ts                # Qwen API 调用，摘要 prompt，tv:/t: 时间戳格式
 │   ├── captions.ts           # 三层字幕获取（scraper → python → whisper）
 │   ├── frames.ts             # yt-dlp + ffmpeg 帧提取
@@ -51,6 +55,7 @@ src/
 ├── types/
 │   └── youtube-captions-scraper.d.ts
 scripts/
+├── batch-tag.ts              # 批量给无标签视频打标签（npx tsx scripts/batch-tag.ts）
 ├── transcribe.sh             # Whisper 转录脚本
 └── fetch_captions.py         # Python youtube-transcript-api 回退
 models/                       # Whisper 模型 (gitignored)
@@ -84,12 +89,33 @@ public/frames/                # 提取的帧图片 (gitignored)
 | timestamp | REAL | 秒 |
 | image_path | TEXT | public/frames/ 下的路径 |
 
+### tags 表
+| Column | Type | Notes |
+|--------|------|-------|
+| id | INTEGER PK | |
+| name | TEXT UNIQUE | 标签名 |
+| color | TEXT | 颜色 hex，默认 #6B7280 |
+| created_at | DATETIME | |
+
+### video_tags 表（多对多）
+| Column | Type | Notes |
+|--------|------|-------|
+| video_id | TEXT PK | youtube_id FK → videos |
+| tag_id | INTEGER PK | FK → tags，ON DELETE CASCADE |
+
 ## Key Conventions
 
 ### 时间戳格式 (LLM 输出)
 - `[MM:SS](t:秒数)` — 普通时间戳，点击跳转
 - `[MM:SS](tv:秒数)` — 视觉关键帧，显示绿点，悬浮预览帧截图
 - SummaryDisplay 用 regex 解析两种格式，ChatPanel 目前只支持 `t:` 格式
+
+### 标签系统
+- LLM 分析视频时自动打标签（1-3 个宽泛分类）
+- Prompt 注入现有标签列表，优先复用，避免过细
+- 用户可在视频详情页手动编辑标签
+- /tags 页面管理所有标签（增删改、颜色）
+- 预设颜色池：#EF4444 #F97316 #EAB308 #22C55E #06B6D4 #3B82F6 #8B5CF6 #EC4899 #6B7280 #14B8A6
 
 ### 外部工具路径
 - Python 3.12: `/opt/homebrew/bin/python3.12`
