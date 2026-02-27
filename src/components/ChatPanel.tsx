@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, type ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { seekTo } from "./YouTubePlayer";
+import TimestampLink, { type FrameData } from "./TimestampLink";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -13,42 +13,13 @@ interface ChatMessage {
 interface ChatPanelProps {
   videoId: string;
   captions: { start: number; dur: number; text: string }[];
+  frames?: FrameData[];
 }
 
-function TimestampLink({
-  href,
-  children,
-}: {
-  href?: string;
-  children?: React.ReactNode;
-}) {
-  const match = href?.match(/^tv?:(\d+)$/);
-  if (!match) {
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 dark:text-blue-400 hover:underline"
-      >
-        {children}
-      </a>
-    );
-  }
-  const seconds = parseInt(match[1], 10);
-  return (
-    <button
-      onClick={() => seekTo(seconds)}
-      className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 underline underline-offset-2 cursor-pointer"
-    >
-      {children}
-    </button>
-  );
-}
 
 export type { ChatMessage };
 
-export default function ChatPanel({ videoId }: ChatPanelProps) {
+export default function ChatPanel({ videoId, frames }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -138,7 +109,7 @@ export default function ChatPanel({ videoId }: ChatPanelProps) {
 
   const markdownComponents = {
     a: ({ href, children, ...props }: ComponentPropsWithoutRef<"a">) => (
-      <TimestampLink href={href}>{children}</TimestampLink>
+      <TimestampLink href={href} videoId={videoId} frames={frames}>{children}</TimestampLink>
     ),
   };
 

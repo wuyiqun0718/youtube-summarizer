@@ -388,6 +388,7 @@ export default function Home() {
               <ChatPanel
                 videoId={video.youtube_id}
                 captions={video.captions || []}
+                frames={frames}
               />
             </div>
             {video.captions && video.captions.length > 0 && (
