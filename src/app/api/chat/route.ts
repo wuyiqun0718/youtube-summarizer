@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getVideoByYoutubeId, getChatHistory, saveChatHistory, getFramesByVideoId } from "@/lib/db";
+import { createLogger } from "@/lib/logger";
 import fs from "fs";
 import path from "path";
 
@@ -11,7 +12,10 @@ const QWEN_API_URL =
   "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const QWEN_MODEL = "qwen-vl-plus"; // Vision-language model for frame-aware chat
 
+const log = createLogger("chat");
+
 export async function POST(req: NextRequest) {
+  const totalTimer = log.time("POST /api/chat");
   try {
     const { videoId, message, includeTranscript } = (await req.json()) as {
       videoId: string;
@@ -26,6 +30,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    log.info(`videoId=${videoId}, includeTranscript=${!!includeTranscript}, msgLen=${message.length}`);
+
     const apiKey = process.env.QWEN_API_KEY;
     if (!apiKey) {
       return Response.json(
@@ -36,6 +42,7 @@ export async function POST(req: NextRequest) {
 
     const video = getVideoByYoutubeId(videoId);
     if (!video || !video.captions_raw) {
+      log.warn("video not found or no captions");
       return Response.json(
         { error: "Video not found or has no captions" },
         { status: 404 }
@@ -44,6 +51,7 @@ export async function POST(req: NextRequest) {
 
     // Load history & append user message
     const history = getChatHistory(videoId);
+    log.info(`chat history: ${history.length} messages`);
     history.push({ role: "user", content: message });
 
     // Format captions into readable timestamped text
@@ -68,6 +76,7 @@ export async function POST(req: NextRequest) {
     // Load frame images for visual context
     const frameRows = getFramesByVideoId(videoId);
     const frameImages: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+    const frameTimer = log.time("load frame images");
     for (const f of frameRows) {
       const framePath = path.join(process.cwd(), "public", f.image_path);
       if (fs.existsSync(framePath)) {
@@ -76,6 +85,7 @@ export async function POST(req: NextRequest) {
         frameImages.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } });
       }
     }
+    frameTimer.end(`${frameImages.length / 2} frames loaded`);
 
     const contextSection = includeTranscript
       ? `## Video summary\n${summary}\n\n## Full transcript\n${transcript}`
@@ -115,6 +125,7 @@ ${contextSection}`;
       ...history.map((m) => ({ role: m.role, content: m.content })),
     );
 
+    const apiTimer = log.time("Qwen VL API streaming");
     const response = await fetch(QWEN_API_URL, {
       method: "POST",
       headers: {
@@ -131,7 +142,9 @@ ${contextSection}`;
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Qwen API error:", errorText);
+      log.error("Qwen API error:", errorText);
+      apiTimer.end("error");
+      totalTimer.end("API error");
       return Response.json({ error: "LLM request failed" }, { status: 502 });
     }
 
@@ -176,11 +189,15 @@ ${contextSection}`;
           // Save to DB after stream completes
           history.push({ role: "assistant", content: fullReply });
           saveChatHistory(videoId, history);
+          apiTimer.end(`reply ${fullReply.length} chars`);
+          totalTimer.end("streamed");
 
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (err) {
-          console.error("Stream error:", err);
+          log.error("stream error:", err);
+          apiTimer.end("stream error");
+          totalTimer.end("error");
           controller.error(err);
         }
       },
@@ -194,7 +211,8 @@ ${contextSection}`;
       },
     });
   } catch (err) {
-    console.error("Chat API error:", err);
+    log.error("failed:", err);
+    totalTimer.end("error");
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }

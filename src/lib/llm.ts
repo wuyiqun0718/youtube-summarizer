@@ -6,6 +6,10 @@
  * Timestamps are embedded as [MM:SS](t:<seconds>) links.
  */
 
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("llm");
+
 const QWEN_API_URL =
   "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const QWEN_MODEL = "qwen3.5-plus";
@@ -68,11 +72,12 @@ export async function summarizeTranscript(
   const apiKey = process.env.QWEN_API_KEY;
 
   if (!apiKey) {
-    console.warn("QWEN_API_KEY not set — using placeholder.");
+    log.warn("QWEN_API_KEY not set — using placeholder.");
     return placeholderSummarize(transcript);
   }
 
   const chinese = isChinese(transcript);
+  log.info(`language=${chinese ? "zh" : "en"}, transcript=${transcript.length} chars, segments=${captionSegments.length}, chapters=${chapters?.length ?? 0}, allVisual=${!!allVisual}`);
   const timeline = buildTimelineHint(captionSegments);
 
   const chaptersHint =
@@ -129,6 +134,7 @@ ${timeline}`;
     ? `请分析以下YouTube视频字幕：\n\n${transcript.slice(0, 12000)}${userInstruction}`
     : `Please analyze this YouTube video transcript:\n\n${transcript.slice(0, 12000)}${userInstruction}`;
 
+  const apiTimer = log.time(`Qwen API (${QWEN_MODEL})`);
   const response = await fetch(QWEN_API_URL, {
     method: "POST",
     headers: {
@@ -148,12 +154,15 @@ ${timeline}`;
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error("Qwen API error:", errorText);
+    log.error("Qwen API error:", errorText);
+    apiTimer.end("error");
     throw new Error(`Qwen API request failed: ${response.status}`);
   }
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content;
+  const usage = data.usage;
+  apiTimer.end(usage ? `tokens: prompt=${usage.prompt_tokens}, completion=${usage.completion_tokens}` : `response ${content?.length ?? 0} chars`);
 
   if (!content) {
     throw new Error("Empty response from Qwen API");
@@ -174,7 +183,7 @@ ${timeline}`;
       zh: parsed.zh || "",
     };
   } catch {
-    // If JSON parse fails, treat raw content as markdown
+    log.warn("JSON parse failed, treating as raw markdown");
     return { en: content, zh: "" };
   }
 }

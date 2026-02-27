@@ -13,7 +13,15 @@ if [ -f "$INPUT" ]; then
   INPUT_FILE="$INPUT"
 else
   # YouTube video ID - download audio with yt-dlp
+  COOKIES="$(dirname "$0")/../cookies.txt"
+  if [ -f "$COOKIES" ]; then
+    COOKIE_ARGS="--cookies $COOKIES"
+  else
+    COOKIE_ARGS="--cookies-from-browser firefox"
+  fi
   yt-dlp -x --audio-format wav --audio-quality 0 \
+    $COOKIE_ARGS \
+    --proxy "http://127.0.0.1:7897" \
     -o "$TMPDIR/audio.%(ext)s" \
     "https://www.youtube.com/watch?v=$INPUT" >&2
 

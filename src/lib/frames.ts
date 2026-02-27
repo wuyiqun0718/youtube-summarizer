@@ -12,6 +12,10 @@
 import { execFile } from "child_process";
 import path from "path";
 import fs from "fs";
+import { createLogger } from "@/lib/logger";
+import { ytDlpCookieArgs } from "@/lib/youtube";
+
+const log = createLogger("frames");
 
 const MAX_FRAMES = 15;
 const DEDUP_THRESHOLD = 5; // seconds
@@ -70,6 +74,7 @@ function getVideoUrl(videoId: string): Promise<string> {
         "-f",
         "bv*[height<=480][ext=mp4]/bv*[height<=480]/bv*/b",
         "--no-playlist",
+        ...ytDlpCookieArgs(),
         "--proxy",
         "http://127.0.0.1:7897",
         `https://www.youtube.com/watch?v=${videoId}`,
@@ -83,7 +88,7 @@ function getVideoUrl(videoId: string): Promise<string> {
       },
       (error, stdout, stderr) => {
         if (error) {
-          console.error("yt-dlp stderr:", stderr);
+          log.error("yt-dlp stderr:", stderr);
           reject(new Error(`Failed to get video URL: ${error.message}`));
           return;
         }
@@ -152,31 +157,40 @@ export async function processVideoFrames(
 ): Promise<FrameData[]> {
   // 1. Parse & deduplicate timestamps
   const raw = extractTimestampsFromMarkdown(summaryMarkdown);
-  if (raw.length === 0) return [];
+  if (raw.length === 0) {
+    log.info("no tv: timestamps found in summary");
+    return [];
+  }
   const timestamps = deduplicateTimestamps(raw, DEDUP_THRESHOLD).slice(
     0,
     MAX_FRAMES
   );
+  log.info(`found ${raw.length} tv: timestamps, ${timestamps.length} after dedup (max ${MAX_FRAMES})`);
 
   // 2. Prepare output dir
   const framesDir = path.join(process.cwd(), "public", "frames", videoId);
   fs.mkdirSync(framesDir, { recursive: true });
 
   // 3. Get direct video URL (no full download)
+  const urlTimer = log.time("yt-dlp get video URL");
   const videoUrl = await getVideoUrl(videoId);
+  urlTimer.end();
 
   // 4. Extract frames directly from URL
   const frames: { timestamp: number; filePath: string }[] = [];
   for (const ts of timestamps) {
     const out = path.join(framesDir, `${ts}.jpg`);
     try {
+      const frameTimer = log.time(`extract frame @${fmtTime(ts)}`);
       await extractFrameFromUrl(videoUrl, ts, out);
       frames.push({ timestamp: ts, filePath: out });
+      frameTimer.end();
     } catch (err) {
-      console.error(err);
+      log.error(`frame @${fmtTime(ts)} failed:`, err);
     }
   }
 
+  log.info(`extracted ${frames.length}/${timestamps.length} frames`);
   if (frames.length === 0) return [];
 
   // 5. Build results

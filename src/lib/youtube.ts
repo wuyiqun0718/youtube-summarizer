@@ -2,6 +2,21 @@
  * Utility functions for YouTube video processing.
  */
 
+import path from "path";
+import fs from "fs";
+
+/**
+ * Returns yt-dlp cookie arguments.
+ * Prefers cookies.txt file if exists, otherwise reads from Firefox.
+ */
+export function ytDlpCookieArgs(): string[] {
+  const cookiePath = path.join(process.cwd(), "cookies.txt");
+  if (fs.existsSync(cookiePath)) {
+    return ["--cookies", cookiePath];
+  }
+  return ["--cookies-from-browser", "firefox"];
+}
+
 /**
  * Extract video ID from various YouTube URL formats.
  */
@@ -60,6 +75,9 @@ export interface Chapter {
  */
 export async function fetchChapters(videoId: string): Promise<Chapter[]> {
   const { execFile } = await import("child_process");
+  const { createLogger } = await import("@/lib/logger");
+  const log = createLogger("youtube");
+  const timer = log.time(`fetch chapters for ${videoId}`);
   return new Promise((resolve) => {
     execFile(
       "/opt/homebrew/bin/yt-dlp",
@@ -67,6 +85,7 @@ export async function fetchChapters(videoId: string): Promise<Chapter[]> {
         "--dump-json",
         "--no-download",
         "--no-warnings",
+        ...ytDlpCookieArgs(),
         "--proxy",
         "http://127.0.0.1:7897",
         `https://www.youtube.com/watch?v=${videoId}`,
@@ -77,6 +96,8 @@ export async function fetchChapters(videoId: string): Promise<Chapter[]> {
       },
       (error, stdout) => {
         if (error || !stdout) {
+          log.warn(`yt-dlp failed or empty: ${error?.message ?? "no stdout"}`);
+          timer.end("no data");
           resolve([]);
           return;
         }
@@ -84,17 +105,19 @@ export async function fetchChapters(videoId: string): Promise<Chapter[]> {
           const data = JSON.parse(stdout);
           const chapters = data.chapters;
           if (!Array.isArray(chapters) || chapters.length === 0) {
+            timer.end("no chapters");
             resolve([]);
             return;
           }
-          resolve(
-            chapters.map((c: { title: string; start_time: number; end_time: number }) => ({
-              title: c.title,
-              start: c.start_time,
-              end: c.end_time,
-            }))
-          );
+          const result = chapters.map((c: { title: string; start_time: number; end_time: number }) => ({
+            title: c.title,
+            start: c.start_time,
+            end: c.end_time,
+          }));
+          timer.end(`${result.length} chapters`);
+          resolve(result);
         } catch {
+          timer.end("parse error");
           resolve([]);
         }
       }

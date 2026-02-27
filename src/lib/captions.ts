@@ -1,5 +1,8 @@
 import { execFile } from "child_process";
 import path from "path";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("captions");
 
 export interface CaptionSegment {
   start: number;
@@ -17,14 +20,20 @@ export async function fetchCaptions(
 ): Promise<CaptionSegment[]> {
   // Try YouTube captions first
   try {
+    log.info(`trying YouTube captions for ${videoId}...`);
+    const timer = log.time("youtube-transcript-api");
     const captions = await fetchYouTubeCaptions(videoId);
-    if (captions.length > 0) return captions;
-  } catch {
-    // Fall through to whisper
+    if (captions.length > 0) {
+      timer.end(`${captions.length} segments`);
+      return captions;
+    }
+    timer.end("no captions found");
+  } catch (e) {
+    log.warn(`YouTube captions failed: ${e instanceof Error ? e.message : e}`);
   }
 
   // Fallback: download audio + whisper
-  console.log(`No YouTube captions for ${videoId}, falling back to Whisper (this may take a few minutes)...`);
+  log.info(`falling back to Whisper for ${videoId} (this may take a few minutes)...`);
   return transcribeWithWhisper(videoId);
 }
 
@@ -59,6 +68,7 @@ function fetchYouTubeCaptions(videoId: string): Promise<CaptionSegment[]> {
 function transcribeWithWhisper(input: string): Promise<CaptionSegment[]> {
   const scriptPath = path.join(process.cwd(), "scripts", "transcribe.sh");
   const modelPath = path.join(process.cwd(), "models", "ggml-small.bin");
+  const timer = log.time(`Whisper transcription (${input})`);
   return new Promise((resolve, reject) => {
     execFile(
       scriptPath,
@@ -66,27 +76,32 @@ function transcribeWithWhisper(input: string): Promise<CaptionSegment[]> {
       { timeout: 600000, env: { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH}` } },
       (error, stdout, stderr) => {
         if (error) {
-          console.error("Whisper error:", error.message);
-          console.error("Whisper stderr:", stderr);
+          log.error("Whisper error:", error.message);
+          log.error("Whisper stderr:", stderr);
+          timer.end("error");
           reject(new Error(`Whisper transcription failed: ${stderr?.trim() || error.message}`));
           return;
         }
         const output = stdout.trim();
         if (!output) {
-          console.error("Whisper: empty stdout, stderr:", stderr);
+          log.error("Whisper: empty stdout, stderr:", stderr);
+          timer.end("empty output");
           reject(new Error("Whisper produced no output"));
           return;
         }
         try {
           const segments: CaptionSegment[] = JSON.parse(output);
           if (!Array.isArray(segments) || segments.length === 0) {
+            timer.end("empty segments");
             reject(new Error("Whisper produced empty segments"));
             return;
           }
+          timer.end(`${segments.length} segments`);
           resolve(segments);
         } catch (e) {
-          console.error("Whisper parse error. stdout:", output.slice(0, 500));
-          console.error("stderr:", stderr?.slice(0, 500));
+          log.error("Whisper parse error. stdout:", output.slice(0, 500));
+          log.error("stderr:", stderr?.slice(0, 500));
+          timer.end("parse error");
           reject(new Error(`Failed to parse Whisper output: ${e instanceof Error ? e.message : String(e)}`));
         }
       }
