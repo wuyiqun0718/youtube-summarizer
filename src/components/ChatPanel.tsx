@@ -8,6 +8,7 @@ import TimestampLink, { type FrameData } from "./TimestampLink";
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  images?: string[]; // base64 data URLs for user-uploaded images
 }
 
 interface ChatPanelProps {
@@ -26,6 +27,38 @@ export default function ChatPanel({ videoId, frames }: ChatPanelProps) {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [includeTranscript, setIncludeTranscript] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const addImages = (files: FileList | File[]) => {
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith("image/")) return;
+      if (file.size > 10 * 1024 * 1024) return; // 10MB limit
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          setPendingImages(prev => [...prev, reader.result as string]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      addImages(imageFiles);
+    }
+  };
 
   // Load chat history from DB
   useEffect(() => {
@@ -43,9 +76,11 @@ export default function ChatPanel({ videoId, frames }: ChatPanelProps) {
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text && pendingImages.length === 0) return;
+    if (loading) return;
 
-    const userMsg: ChatMessage = { role: "user", content: text };
+    const userMsg: ChatMessage = { role: "user", content: text || "(image)", images: pendingImages.length > 0 ? [...pendingImages] : undefined };
+    setPendingImages([]);
     const assistantMsg: ChatMessage = { role: "assistant", content: "" };
     setMessages(prev => [...prev, userMsg, assistantMsg]);
     setInput("");
@@ -55,7 +90,7 @@ export default function ChatPanel({ videoId, frames }: ChatPanelProps) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId, message: text, includeTranscript }),
+        body: JSON.stringify({ videoId, message: text || "(image)", includeTranscript, images: userMsg.images }),
       });
 
       if (!res.ok) {
@@ -145,7 +180,16 @@ export default function ChatPanel({ videoId, frames }: ChatPanelProps) {
                   </ReactMarkdown>
                 </div>
               ) : (
-                msg.content
+                <div>
+                  {msg.images && msg.images.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-1.5">
+                      {msg.images.map((src, j) => (
+                        <img key={j} src={src} alt="uploaded" className="max-w-[200px] max-h-[150px] rounded-lg object-cover" />
+                      ))}
+                    </div>
+                  )}
+                  {msg.content !== "(image)" && msg.content}
+                </div>
               )}
             </div>
           </div>
@@ -175,13 +219,46 @@ export default function ChatPanel({ videoId, frames }: ChatPanelProps) {
           />
           📜 Include full transcript
         </label>
+        {pendingImages.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-1">
+            {pendingImages.map((src, i) => (
+              <div key={i} className="relative group">
+                <img src={src} alt="pending" className="w-16 h-16 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700" />
+                <button
+                  onClick={() => setPendingImages(prev => prev.filter((_, j) => j !== i))}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2 items-center">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => { if (e.target.files) addImages(e.target.files); e.target.value = ""; }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0"
+            title="Upload image"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+            </svg>
+          </button>
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-            placeholder="Ask about this video..."
+            onPaste={handlePaste}
+            placeholder="Ask about this video... (paste images here)"
             className="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
           />
           <button

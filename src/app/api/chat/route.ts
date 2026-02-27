@@ -17,10 +17,11 @@ const log = createLogger("chat");
 export async function POST(req: NextRequest) {
   const totalTimer = log.time("POST /api/chat");
   try {
-    const { videoId, message, includeTranscript } = (await req.json()) as {
+    const { videoId, message, includeTranscript, images } = (await req.json()) as {
       videoId: string;
       message: string;
       includeTranscript?: boolean;
+      images?: string[]; // base64 data URLs
     };
 
     if (!videoId || !message) {
@@ -120,10 +121,27 @@ ${contextSection}`;
       messages.push({ role: "assistant", content: "好的，我已看到这些关键帧截图，可以结合画面内容回答问题。" });
     }
 
-    // Append chat history
-    messages.push(
-      ...history.map((m) => ({ role: m.role, content: m.content })),
-    );
+    // Append chat history (text only for older messages)
+    for (let i = 0; i < history.length - 1; i++) {
+      messages.push({ role: history[i].role, content: history[i].content });
+    }
+
+    // Latest user message — may include images
+    const lastMsg = history[history.length - 1];
+    if (lastMsg && lastMsg.role === "user" && images && images.length > 0) {
+      const parts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+      for (const dataUrl of images) {
+        parts.push({ type: "image_url", image_url: { url: dataUrl } });
+      }
+      if (lastMsg.content && lastMsg.content !== "(image)") {
+        parts.push({ type: "text", text: lastMsg.content });
+      } else {
+        parts.push({ type: "text", text: "请描述和分析这张图片，结合视频内容回答。" });
+      }
+      messages.push({ role: "user", content: parts });
+    } else if (lastMsg) {
+      messages.push({ role: lastMsg.role, content: lastMsg.content });
+    }
 
     const apiTimer = log.time("Qwen VL API streaming");
     const response = await fetch(QWEN_API_URL, {
