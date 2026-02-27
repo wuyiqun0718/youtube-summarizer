@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllVideos, getVideoByYoutubeId } from "@/lib/db";
+import { getAllVideos, getVideoByYoutubeId, getTagsForAllVideos, getTagsForVideo } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
       }
       let captions: { start: number; dur: number; text: string }[] = [];
       try { captions = JSON.parse(video.captions_raw); } catch { /* ignore */ }
+      const tags = getTagsForVideo(videoId);
       return NextResponse.json({
         video: {
           youtube_id: video.youtube_id,
@@ -24,12 +25,14 @@ export async function GET(request: NextRequest) {
           zh: video.summary_zh,
           captions,
           favorited: !!video.favorited,
+          tags,
         },
       });
     }
 
     // List all
     const videos = getAllVideos();
+    const allVideoTags = getTagsForAllVideos();
     const list = videos.map((v) => ({
       id: v.id,
       youtube_id: v.youtube_id,
@@ -37,6 +40,7 @@ export async function GET(request: NextRequest) {
       thumbnail: v.thumbnail,
       favorited: !!v.favorited,
       created_at: v.created_at,
+      tags: allVideoTags[v.youtube_id] || [],
     }));
     return NextResponse.json({ videos: list });
   } catch (error) {

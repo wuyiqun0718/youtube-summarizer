@@ -28,6 +28,12 @@ export default function Navbar() {
           >
             History
           </Link>
+          <Link
+            href="/tags"
+            className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+          >
+            Tags
+          </Link>
           <button
             onClick={toggleTheme}
             className="p-2 rounded-lg text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"

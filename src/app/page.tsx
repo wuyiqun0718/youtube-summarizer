@@ -7,6 +7,7 @@ import YouTubePlayer from "@/components/YouTubePlayer";
 import SummaryDisplay from "@/components/SummaryDisplay";
 import TranscriptPanel from "@/components/TranscriptPanel";
 import ChatPanel from "@/components/ChatPanel";
+import VideoTagEditor from "@/components/VideoTagEditor";
 
 interface CaptionSegment {
   start: number;
@@ -297,9 +298,9 @@ export default function Home() {
 
       {/* Results */}
       {video && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-8 lg:h-[calc(100vh-10rem)]">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-8 lg:h-[calc(100vh-10rem)]">
           {/* Left: Video Player — sticky */}
-          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 truncate flex-1">
                 {video.title}
@@ -330,6 +331,7 @@ export default function Home() {
                 )}
               </button>
             </div>
+            <VideoTagEditor videoId={video.youtube_id} />
             <YouTubePlayer videoId={video.youtube_id} />
           </div>
 

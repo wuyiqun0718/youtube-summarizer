@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { extractVideoId, getThumbnailUrl, fetchVideoTitle, fetchChapters } from "@/lib/youtube";
 import { fetchCaptions, captionsToTranscript } from "@/lib/captions";
 import { summarizeTranscript } from "@/lib/llm";
-import { upsertVideo, getVideoByYoutubeId, deleteFramesByVideoId } from "@/lib/db";
+import { upsertVideo, getVideoByYoutubeId, deleteFramesByVideoId, getAllTags, getOrCreateTagByName, setVideoTags } from "@/lib/db";
 import { createLogger } from "@/lib/logger";
 import fs from "fs";
 import path from "path";
@@ -95,6 +95,9 @@ export async function POST(request: NextRequest) {
       log.info("cleaned up old frames");
     }
 
+    // Fetch existing tags to pass to LLM
+    const existingTags = getAllTags().map(t => t.name);
+
     // Summarize (with chapters if available)
     const llmTimer = log.time("LLM summarize");
     const result = await summarizeTranscript(
@@ -102,9 +105,10 @@ export async function POST(request: NextRequest) {
       captions.map((c) => ({ start: c.start, text: c.text })),
       userPrompt || undefined,
       chapters.length > 0 ? chapters : undefined,
-      !!allVisual
+      !!allVisual,
+      existingTags
     );
-    llmTimer.end(`en=${result.en.length} chars, zh=${result.zh.length} chars`);
+    llmTimer.end(`en=${result.en.length} chars, zh=${result.zh.length} chars, tags=${result.tags.join(",")}`);
 
     // Store in DB (always overwrite with latest)
     const videoTitle = typeof title === "string" && title ? title : await fetchVideoTitle(videoId);
@@ -118,6 +122,13 @@ export async function POST(request: NextRequest) {
       prompt: userPrompt,
       chapters: JSON.stringify(chapters),
     });
+    // Save LLM-assigned tags
+    if (result.tags.length > 0) {
+      const tagRows = result.tags.map(name => getOrCreateTagByName(name));
+      setVideoTags(videoId, tagRows.map(t => t.id));
+      log.info(`assigned tags: ${tagRows.map(t => t.name).join(", ")}`);
+    }
+
     log.info(`saved to DB: "${video.title}"`);
 
     totalTimer.end("success");

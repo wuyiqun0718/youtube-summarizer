@@ -17,6 +17,7 @@ const QWEN_MODEL = "qwen3.5-plus";
 export interface SummaryResult {
   en: string; // Markdown
   zh: string; // Markdown
+  tags: string[]; // Tag names assigned by LLM
 }
 
 /**
@@ -67,7 +68,8 @@ export async function summarizeTranscript(
   captionSegments: { start: number; text: string }[],
   userPrompt?: string,
   chapters?: { title: string; start: number; end: number }[],
-  allVisual?: boolean
+  allVisual?: boolean,
+  existingTags?: string[]
 ): Promise<SummaryResult> {
   const apiKey = process.env.QWEN_API_KEY;
 
@@ -94,14 +96,24 @@ export async function summarizeTranscript(
     ? `\n\nThe user has an additional request for this summary:\n"${userPrompt}"\nPlease incorporate this into your analysis.`
     : "";
 
+  const tagsHint = existingTags && existingTags.length > 0
+    ? `\n## 现有标签\n以下是系统中已有的标签：${existingTags.join("、")}\n请优先从中选择合适的标签（1-3个即可）。标签要保持宽泛，如"攀岩训练"而非"离心训练"。只有在现有标签完全不适用时才创建新标签。\n`
+    : `\n## 标签\n请为这个视频选择 1-3 个宽泛的分类标签（如"攀岩训练"、"美股分析"、"人工智能"等）。不要太细，保持大类即可。\n`;
+
+  const tagsHintEn = existingTags && existingTags.length > 0
+    ? `\n## Existing Tags\nThese tags already exist in the system: ${existingTags.join(", ")}\nPick 1-3 suitable tags from the list. Keep tags broad (e.g. "Climbing" not "Eccentric Training"). Only create new tags if none of the existing ones fit at all.\n`
+    : `\n## Tags\nCreate 1-3 broad category tags for this video (e.g. "Climbing", "US Stocks", "AI"). Keep them high-level, not overly specific.\n`;
+
   const systemPrompt = chinese
     ? `你是一个智能YouTube视频分析助手。你的任务是根据视频字幕内容，生成高质量的总结分析。
 
 ## 输出格式
 返回合法JSON：
 {
-  "zh": "<Markdown格式的中文分析>"
+  "zh": "<Markdown格式的中文分析>",
+  "tags": ["标签1", "标签2"]
 }
+${tagsHint}
 
 ## Markdown要求
 - **自由决定结构**：根据视频内容选择最合适的格式。可以用段落、列表、表格、对比、分级标题等任意组合。
@@ -117,8 +129,10 @@ ${timeline}`
 Return valid JSON:
 {
   "en": "<Markdown analysis in English>",
-  "zh": "<Markdown analysis in Chinese>"
+  "zh": "<Markdown analysis in Chinese>",
+  "tags": ["tag1", "tag2"]
 }
+${tagsHintEn}
 
 ## Markdown guidelines
 - **Choose the best structure for the content.** Use whatever combination of paragraphs, bullet lists, tables, comparisons, headings, etc. fits the video. A tech tutorial needs a different format than a debate or a vlog.
@@ -170,21 +184,24 @@ ${timeline}`;
 
   try {
     const parsed = JSON.parse(content);
+    const tags: string[] = Array.isArray(parsed.tags) ? parsed.tags.map((t: unknown) => String(t).trim()).filter(Boolean) : [];
 
     if (chinese) {
       return {
         en: "",
         zh: parsed.zh || parsed.content || content,
+        tags,
       };
     }
 
     return {
       en: parsed.en || parsed.content || "",
       zh: parsed.zh || "",
+      tags,
     };
   } catch {
     log.warn("JSON parse failed, treating as raw markdown");
-    return { en: content, zh: "" };
+    return { en: content, zh: "", tags: [] };
   }
 }
 
@@ -194,5 +211,5 @@ ${timeline}`;
 function placeholderSummarize(transcript: string): SummaryResult {
   const preview = transcript.slice(0, 500);
   const md = `## Summary\n\nNo API key configured. Here's a preview of the transcript:\n\n> ${preview}...`;
-  return { en: md, zh: md };
+  return { en: md, zh: md, tags: [] };
 }

@@ -51,6 +51,27 @@ function getDb(): Database.Database {
     // Add chapters column (JSON array from YouTube)
     try { db.exec(`ALTER TABLE videos ADD COLUMN chapters TEXT NOT NULL DEFAULT '[]'`); } catch { /* exists */ }
 
+    // Tags table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        color TEXT NOT NULL DEFAULT '#6B7280',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+
+    // Video-Tag junction table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS video_tags (
+        video_id TEXT NOT NULL,
+        tag_id INTEGER NOT NULL,
+        PRIMARY KEY (video_id, tag_id),
+        FOREIGN KEY (video_id) REFERENCES videos(youtube_id) ON DELETE CASCADE,
+        FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+      )
+    `);
+
     // Frames table (visual key frames)
     // Migration: drop old table with analysis column if it exists
     const hasAnalysis = db.prepare(
@@ -224,4 +245,87 @@ export function getFramesByVideoId(videoId: string): FrameRow[] {
 export function deleteFramesByVideoId(videoId: string): void {
   const db = getDb();
   db.prepare("DELETE FROM frames WHERE youtube_id = ?").run(videoId);
+}
+
+// --- Tags ---
+
+export interface TagRow {
+  id: number;
+  name: string;
+  color: string;
+  created_at: string;
+}
+
+export function getAllTags(): TagRow[] {
+  const db = getDb();
+  return db.prepare("SELECT * FROM tags ORDER BY name").all() as TagRow[];
+}
+
+export function createTag(name: string, color?: string): TagRow {
+  const db = getDb();
+  const stmt = db.prepare("INSERT INTO tags (name, color) VALUES (?, ?)");
+  const info = stmt.run(name.trim(), color || "#6B7280");
+  return db.prepare("SELECT * FROM tags WHERE id = ?").get(info.lastInsertRowid) as TagRow;
+}
+
+export function updateTag(id: number, data: { name?: string; color?: string }): TagRow | undefined {
+  const db = getDb();
+  const fields: string[] = [];
+  const values: (string | number)[] = [];
+  if (data.name !== undefined) { fields.push("name = ?"); values.push(data.name.trim()); }
+  if (data.color !== undefined) { fields.push("color = ?"); values.push(data.color); }
+  if (fields.length === 0) return db.prepare("SELECT * FROM tags WHERE id = ?").get(id) as TagRow | undefined;
+  values.push(id);
+  db.prepare(`UPDATE tags SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  return db.prepare("SELECT * FROM tags WHERE id = ?").get(id) as TagRow | undefined;
+}
+
+export function deleteTag(id: number): void {
+  const db = getDb();
+  db.prepare("DELETE FROM tags WHERE id = ?").run(id);
+}
+
+export function getTagsForVideo(youtubeId: string): TagRow[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT t.* FROM tags t
+    JOIN video_tags vt ON vt.tag_id = t.id
+    WHERE vt.video_id = ?
+    ORDER BY t.name
+  `).all(youtubeId) as TagRow[];
+}
+
+export function setVideoTags(youtubeId: string, tagIds: number[]): void {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM video_tags WHERE video_id = ?").run(youtubeId);
+    const stmt = db.prepare("INSERT INTO video_tags (video_id, tag_id) VALUES (?, ?)");
+    for (const tagId of tagIds) {
+      stmt.run(youtubeId, tagId);
+    }
+  });
+  tx();
+}
+
+export function getOrCreateTagByName(name: string): TagRow {
+  const db = getDb();
+  const trimmed = name.trim();
+  const existing = db.prepare("SELECT * FROM tags WHERE name = ? COLLATE NOCASE").get(trimmed) as TagRow | undefined;
+  if (existing) return existing;
+  return createTag(trimmed);
+}
+
+export function getTagsForAllVideos(): Record<string, TagRow[]> {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT vt.video_id, t.id, t.name, t.color, t.created_at
+    FROM video_tags vt JOIN tags t ON vt.tag_id = t.id
+    ORDER BY t.name
+  `).all() as (TagRow & { video_id: string })[];
+  const result: Record<string, TagRow[]> = {};
+  for (const row of rows) {
+    if (!result[row.video_id]) result[row.video_id] = [];
+    result[row.video_id].push({ id: row.id, name: row.name, color: row.color, created_at: row.created_at });
+  }
+  return result;
 }

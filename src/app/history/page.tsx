@@ -4,6 +4,12 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
+interface Tag {
+  id: number;
+  name: string;
+  color: string;
+}
+
 interface VideoSummary {
   id: number;
   youtube_id: string;
@@ -13,6 +19,7 @@ interface VideoSummary {
   summary_zh: string;
   favorited: number;
   created_at: string;
+  tags: Tag[];
 }
 
 interface TimeGroup {
@@ -61,6 +68,7 @@ export default function HistoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showFavOnly, setShowFavOnly] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     async function fetchHistory() {
@@ -102,10 +110,35 @@ export default function HistoryPage() {
     } catch { /* ignore */ }
   }, []);
 
+  // Collect all unique tags from videos
+  const allTags = useMemo(() => {
+    const map = new Map<number, Tag>();
+    for (const v of videos) {
+      for (const t of (v.tags || [])) {
+        if (!map.has(t.id)) map.set(t.id, t);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [videos]);
+
+  const toggleTag = useCallback((tagId: number) => {
+    setSelectedTagIds(prev => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
+      return next;
+    });
+  }, []);
+
   const filtered = useMemo(() => {
     let result = videos;
     if (showFavOnly) {
       result = result.filter((v) => v.favorited);
+    }
+    if (selectedTagIds.size > 0) {
+      result = result.filter((v) =>
+        (v.tags || []).some(t => selectedTagIds.has(t.id))
+      );
     }
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -117,7 +150,7 @@ export default function HistoryPage() {
       );
     }
     return result;
-  }, [videos, search, showFavOnly]);
+  }, [videos, search, showFavOnly, selectedTagIds]);
 
   const groups = useMemo(() => groupByTime(filtered), [filtered]);
   const favCount = useMemo(() => videos.filter((v) => v.favorited).length, [videos]);
@@ -191,6 +224,34 @@ export default function HistoryPage() {
             <span>{showFavOnly ? "★" : "☆"}</span>
             <span>Favorites{favCount > 0 ? ` (${favCount})` : ""}</span>
           </button>
+        </div>
+      )}
+
+      {/* Tag filters */}
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-6">
+          {allTags.map((tag) => (
+            <button
+              key={tag.id}
+              onClick={() => toggleTag(tag.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                selectedTagIds.has(tag.id)
+                  ? "text-white border-transparent"
+                  : "bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-600"
+              }`}
+              style={selectedTagIds.has(tag.id) ? { backgroundColor: tag.color } : {}}
+            >
+              {tag.name}
+            </button>
+          ))}
+          {selectedTagIds.size > 0 && (
+            <button
+              onClick={() => setSelectedTagIds(new Set())}
+              className="px-3 py-1.5 rounded-full text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              Clear
+            </button>
+          )}
         </div>
       )}
 
@@ -277,6 +338,19 @@ export default function HistoryPage() {
                       <p className="text-sm text-zinc-500 line-clamp-2 mb-3">
                         {video.summary_en || video.summary_zh || ""}
                       </p>
+                      {video.tags && video.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {video.tags.map((tag) => (
+                            <span
+                              key={tag.id}
+                              className="px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
+                              style={{ backgroundColor: tag.color }}
+                            >
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-xs text-zinc-600">
                         <span>
                           {new Date(video.created_at + "Z").toLocaleDateString()}
