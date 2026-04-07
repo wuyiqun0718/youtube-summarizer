@@ -14,8 +14,10 @@ AI-powered YouTube video analysis tool. Paste a URL, get an insightful markdown 
 - **YouTube chapters** — Automatically fetched and used to improve timestamp accuracy
 - **Custom instructions** — Guide the analysis (e.g. "focus on technical details", "compare pros and cons in a table")
 - **Captions** — YouTube API → Python youtube-transcript-api → Whisper local fallback (three-tier)
-- **History & favorites** — All summaries saved locally with search
+- **Tags** — Auto-tagged by LLM, manually editable, filterable in history
+- **History & favorites** — All summaries saved locally with search and tag filtering
 - **Transcript panel** — Full transcript with clickable timestamps
+- **Cross-platform** — Works on macOS, Windows, and Linux with configurable tool paths
 
 ## Tech Stack
 
@@ -50,6 +52,17 @@ Create `.env.local`:
 ```env
 QWEN_API_KEY=your_dashscope_api_key
 ```
+
+All tool paths and proxy settings are auto-detected per platform. Override in `.env.local` if needed (see `.env.example` for all options):
+
+```env
+# Windows example — disable proxy
+PROXY_URL=
+```
+
+### YouTube cookies
+
+YouTube may require authentication to avoid bot detection. Install Firefox, log in to YouTube, and yt-dlp will read cookies automatically via `--cookies-from-browser firefox`.
 
 ### (Optional) Whisper setup
 

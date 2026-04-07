@@ -51,6 +51,8 @@ src/
 │   ├── captions.ts           # 三层字幕获取（scraper → python → whisper）
 │   ├── frames.ts             # yt-dlp + ffmpeg 帧提取
 │   ├── youtube.ts            # fetchChapters (yt-dlp --dump-json)
+│   ├── config.ts             # 外部工具路径 + 代理配置（跨平台）
+│   ├── logger.ts             # 结构化日志（[tag] 前缀 + 计时）
 │   └── format.ts             # 工具函数
 ├── types/
 │   └── youtube-captions-scraper.d.ts
@@ -59,7 +61,7 @@ scripts/
 ├── transcribe.sh             # Whisper 转录脚本
 └── fetch_captions.py         # Python youtube-transcript-api 回退
 models/                       # Whisper 模型 (gitignored)
-data/                         # SQLite DB (gitignored)
+data/                         # SQLite DB (tracked in git, WAL files ignored)
 public/frames/                # 提取的帧图片 (gitignored)
 ```
 
@@ -117,12 +119,21 @@ public/frames/                # 提取的帧图片 (gitignored)
 - /tags 页面管理所有标签（增删改、颜色）
 - 预设颜色池：#EF4444 #F97316 #EAB308 #22C55E #06B6D4 #3B82F6 #8B5CF6 #EC4899 #6B7280 #14B8A6
 
-### 外部工具路径
-- Python 3.12: `/opt/homebrew/bin/python3.12`
-- whisper-cli: `/opt/homebrew/bin/whisper-cli`
-- yt-dlp: 需在 PATH 中
-- ffmpeg: 需在 PATH 中
+### 外部工具配置
+所有工具路径和代理通过 `src/lib/config.ts` 集中管理，支持环境变量覆盖：
+
+| 环境变量 | macOS 默认 | Windows/Linux 默认 |
+|----------|-----------|-------------------|
+| `BIN_YTDLP` | `/opt/homebrew/bin/yt-dlp` | `yt-dlp` (PATH) |
+| `BIN_FFMPEG` | `/opt/homebrew/bin/ffmpeg` | `ffmpeg` (PATH) |
+| `BIN_PYTHON` | `python3.12` | `python3` |
+| `BIN_WHISPER` | `whisper-cli` | `whisper-cli` |
+| `PROXY_URL` | `http://127.0.0.1:7897` | 同左（设空禁用） |
+| `EXTRA_PATH` | `/opt/homebrew/bin` | 空 |
+
+macOS 无需任何配置。Windows/Linux 只需确保工具在 PATH 中，如不需代理在 `.env.local` 加 `PROXY_URL=`。
 - Whisper 模型: `models/ggml-small.bin`
+- YouTube cookies: `--cookies-from-browser firefox`（需 Firefox 登录 YouTube）
 
 ## Dev
 
