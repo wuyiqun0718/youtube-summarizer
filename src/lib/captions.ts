@@ -1,6 +1,7 @@
 import { execFile } from "child_process";
 import path from "path";
 import { createLogger } from "@/lib/logger";
+import { BIN_PYTHON, buildEnv } from "@/lib/config";
 
 const log = createLogger("captions");
 
@@ -49,7 +50,7 @@ export async function fetchLocalCaptions(
 function fetchYouTubeCaptions(videoId: string): Promise<CaptionSegment[]> {
   const scriptPath = path.join(process.cwd(), "scripts", "fetch_captions.py");
   return new Promise((resolve, reject) => {
-    execFile("python3.12", [scriptPath, videoId], { timeout: 30000 }, (error, stdout, stderr) => {
+    execFile(BIN_PYTHON, [scriptPath, videoId], { timeout: 30000, env: buildEnv() }, (error, stdout, stderr) => {
       if (error) {
         const errMsg = stderr?.trim() || error.message;
         reject(new Error(errMsg));
@@ -73,7 +74,7 @@ function transcribeWithWhisper(input: string): Promise<CaptionSegment[]> {
     execFile(
       scriptPath,
       [input, modelPath],
-      { timeout: 600000, env: { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH}` } },
+      { timeout: 600000, env: buildEnv() },
       (error, stdout, stderr) => {
         if (error) {
           log.error("Whisper error:", error.message);

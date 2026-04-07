@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """Fetch YouTube captions and output as JSON."""
 import json
 import sys

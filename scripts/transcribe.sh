@@ -1,7 +1,8 @@
 #!/bin/bash
 # Usage: transcribe.sh <video_id_or_file_path> [model_path]
 # Outputs JSON array of {start, dur, text} segments to stdout
-export PATH="/opt/homebrew/bin:$PATH"
+# Extend PATH (EXTRA_PATH env var or macOS homebrew default)
+export PATH="${EXTRA_PATH:-/opt/homebrew/bin}:$PATH"
 
 INPUT="$1"
 MODEL="${2:-$(dirname "$0")/../models/ggml-small.bin}"
@@ -19,9 +20,12 @@ else
   else
     COOKIE_ARGS="--cookies-from-browser firefox"
   fi
+  PROXY_ARGS=""
+  [ -n "${PROXY_URL:-}" ] && PROXY_ARGS="--proxy $PROXY_URL"
+  [ -z "${PROXY_URL:-}" ] && PROXY_ARGS="--proxy http://127.0.0.1:7897"
   yt-dlp -x --audio-format wav --audio-quality 0 \
     $COOKIE_ARGS \
-    --proxy "http://127.0.0.1:7897" \
+    $PROXY_ARGS \
     -o "$TMPDIR/audio.%(ext)s" \
     "https://www.youtube.com/watch?v=$INPUT" >&2
 
@@ -46,7 +50,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Run whisper
-whisper-cli \
+${BIN_WHISPER:-whisper-cli} \
   --model "$MODEL" \
   --language auto \
   --output-json \
@@ -59,7 +63,7 @@ if [ ! -f "$TMPDIR/result.json" ]; then
 fi
 
 # Convert whisper JSON output to our format
-python3.12 -c "
+${BIN_PYTHON:-python3} -c "
 import json, sys
 with open('$TMPDIR/result.json') as f:
     data = json.load(f)

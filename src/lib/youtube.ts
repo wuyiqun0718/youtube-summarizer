@@ -2,21 +2,6 @@
  * Utility functions for YouTube video processing.
  */
 
-import path from "path";
-import fs from "fs";
-
-/**
- * Returns yt-dlp cookie arguments.
- * Prefers cookies.txt file if exists, otherwise reads from Firefox.
- */
-export function ytDlpCookieArgs(): string[] {
-  const cookiePath = path.join(process.cwd(), "cookies.txt");
-  if (fs.existsSync(cookiePath)) {
-    return ["--cookies", cookiePath];
-  }
-  return ["--cookies-from-browser", "firefox"];
-}
-
 /**
  * Extract video ID from various YouTube URL formats.
  */
@@ -76,23 +61,23 @@ export interface Chapter {
 export async function fetchChapters(videoId: string): Promise<Chapter[]> {
   const { execFile } = await import("child_process");
   const { createLogger } = await import("@/lib/logger");
+  const { BIN_YTDLP, buildEnv, ytDlpCookieArgs, ytDlpProxyArgs } = await import("@/lib/config");
   const log = createLogger("youtube");
   const timer = log.time(`fetch chapters for ${videoId}`);
   return new Promise((resolve) => {
     execFile(
-      "/opt/homebrew/bin/yt-dlp",
+      BIN_YTDLP,
       [
         "--dump-json",
         "--no-download",
         "--no-warnings",
         ...ytDlpCookieArgs(),
-        "--proxy",
-        "http://127.0.0.1:7897",
+        ...ytDlpProxyArgs(),
         `https://www.youtube.com/watch?v=${videoId}`,
       ],
       {
         timeout: 30000,
-        env: { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH}` },
+        env: buildEnv(),
       },
       (error, stdout) => {
         if (error || !stdout) {

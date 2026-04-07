@@ -13,7 +13,7 @@ import { execFile } from "child_process";
 import path from "path";
 import fs from "fs";
 import { createLogger } from "@/lib/logger";
-import { ytDlpCookieArgs } from "@/lib/youtube";
+import { BIN_YTDLP, BIN_FFMPEG, buildEnv, proxyEnv, ytDlpCookieArgs, ytDlpProxyArgs } from "@/lib/config";
 
 const log = createLogger("frames");
 
@@ -68,23 +68,19 @@ function fmtTime(s: number): string {
 function getVideoUrl(videoId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
-      "/opt/homebrew/bin/yt-dlp",
+      BIN_YTDLP,
       [
         "-g",
         "-f",
         "bv*[height<=480][ext=mp4]/bv*[height<=480]/bv*/b",
         "--no-playlist",
         ...ytDlpCookieArgs(),
-        "--proxy",
-        "http://127.0.0.1:7897",
+        ...ytDlpProxyArgs(),
         `https://www.youtube.com/watch?v=${videoId}`,
       ],
       {
         timeout: 30000,
-        env: {
-          ...process.env,
-          PATH: `/opt/homebrew/bin:${process.env.PATH}`,
-        },
+        env: buildEnv(),
       },
       (error, stdout, stderr) => {
         if (error) {
@@ -114,7 +110,7 @@ function extractFrameFromUrl(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(
-      "/opt/homebrew/bin/ffmpeg",
+      BIN_FFMPEG,
       [
         "-ss",
         String(timestamp),
@@ -129,11 +125,7 @@ function extractFrameFromUrl(
       ],
       {
         timeout: 60000,
-        env: {
-          ...process.env,
-          http_proxy: "http://127.0.0.1:7897",
-          https_proxy: "http://127.0.0.1:7897",
-        },
+        env: buildEnv(proxyEnv()),
       },
       (error) => {
         if (error)
