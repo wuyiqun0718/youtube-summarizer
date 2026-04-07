@@ -37,8 +37,9 @@ yarn-error.log*
 .env
 .env.local
 
-# sqlite data
-/data/
+# sqlite WAL temp files (db itself is tracked)
+/data/*.db-shm
+/data/*.db-wal
 
 # vercel
 .vercel
