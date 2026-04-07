@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
       }
       let captions: { start: number; dur: number; text: string }[] = [];
       try { captions = JSON.parse(video.captions_raw); } catch { /* ignore */ }
+      let chapters: { title: string; start: number; end: number }[] = [];
+      try { chapters = JSON.parse(video.chapters); } catch { /* ignore */ }
       const tags = getTagsForVideo(videoId);
       return NextResponse.json({
         video: {
@@ -24,6 +26,7 @@ export async function GET(request: NextRequest) {
           en: video.summary_en,
           zh: video.summary_zh,
           captions,
+          chapters,
           favorited: !!video.favorited,
           tags,
         },

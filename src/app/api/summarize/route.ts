@@ -42,6 +42,8 @@ export async function POST(request: NextRequest) {
       try { captions = JSON.parse(existing.captions_raw); } catch { /* ignore */ }
       log.info("cache hit, returning existing summary");
       totalTimer.end("cached");
+      let chapters: { title: string; start: number; end: number }[] = [];
+      try { chapters = JSON.parse(existing.chapters); } catch { /* ignore */ }
       return NextResponse.json({
         video: {
           youtube_id: existing.youtube_id,
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
           en: existing.summary_en,
           zh: existing.summary_zh,
           captions,
+          chapters,
           favorited: !!existing.favorited,
         },
         cached: true,
@@ -140,6 +143,7 @@ export async function POST(request: NextRequest) {
         en: result.en,
         zh: result.zh,
         captions: captions.map(c => ({ start: c.start, dur: c.dur, text: c.text })),
+        chapters,
         favorited: !!video.favorited,
       },
       cached: false,

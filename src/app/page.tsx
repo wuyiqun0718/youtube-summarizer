@@ -8,6 +8,8 @@ import SummaryDisplay from "@/components/SummaryDisplay";
 import TranscriptPanel from "@/components/TranscriptPanel";
 import ChatPanel from "@/components/ChatPanel";
 import VideoTagEditor from "@/components/VideoTagEditor";
+import { TimelineBar, ChapterList } from "@/components/ChapterTimeline";
+import type { Chapter } from "@/components/ChapterTimeline";
 
 interface CaptionSegment {
   start: number;
@@ -21,6 +23,7 @@ interface VideoData {
   en: string;
   zh: string;
   captions?: CaptionSegment[];
+  chapters?: Chapter[];
   favorited?: boolean;
 }
 
@@ -36,7 +39,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoData | null>(null);
   const [favorited, setFavorited] = useState(false);
-  const [activeTab, setActiveTab] = useState<"summary" | "chat" | "transcript">("summary");
+  const [activeTab, setActiveTab] = useState<"summary" | "chat">("summary");
+  const [leftTab, setLeftTab] = useState<"chapters" | "transcript">("chapters");
   const [frames, setFrames] = useState<FrameData[]>([]);
   const [framesLoading, setFramesLoading] = useState(false);
   const [showResummarize, setShowResummarize] = useState(false);
@@ -57,6 +61,7 @@ export default function Home() {
               en: data.video.en || "",
               zh: data.video.zh || "",
               captions: data.video.captions,
+              chapters: data.video.chapters,
             });
             setFavorited(!!data.video.favorited);
           }
@@ -148,6 +153,7 @@ export default function Home() {
         en: data.video.en || "",
         zh: data.video.zh || "",
         captions: data.video.captions,
+        chapters: data.video.chapters,
       };
       setVideo(vid);
       setFavorited(!!data.video.favorited);
@@ -195,6 +201,7 @@ export default function Home() {
         en: data.video.en || "",
         zh: data.video.zh || "",
         captions: data.video.captions,
+        chapters: data.video.chapters,
       };
       setVideo(vid);
       setFavorited(!!data.video.favorited);
@@ -299,9 +306,9 @@ export default function Home() {
       {/* Results */}
       {video && (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-8 lg:h-[calc(100vh-10rem)]">
-          {/* Left: Video Player — sticky */}
-          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start min-w-0">
-            <div className="flex items-center gap-2">
+          {/* Left: Video Player + Timeline + Chapters/Transcript */}
+          <div className="flex flex-col gap-4 lg:overflow-y-auto min-w-0 min-h-0">
+            <div className="flex items-center gap-2 shrink-0">
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 truncate flex-1">
                 {video.title}
               </h2>
@@ -331,8 +338,56 @@ export default function Home() {
                 )}
               </button>
             </div>
-            <VideoTagEditor videoId={video.youtube_id} />
-            <YouTubePlayer videoId={video.youtube_id} />
+            <div className="shrink-0">
+              <VideoTagEditor videoId={video.youtube_id} />
+            </div>
+            <div className="shrink-0">
+              <YouTubePlayer videoId={video.youtube_id} />
+            </div>
+
+            {/* Left-side tabs: Chapters / Transcript */}
+            {(video.chapters && video.chapters.length > 0) ? (
+              <>
+                <div className="flex items-center gap-1 bg-zinc-200 dark:bg-zinc-800/60 rounded-lg p-0.5 self-start shrink-0">
+                  <button
+                    onClick={() => setLeftTab("chapters")}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      leftTab === "chapters"
+                        ? "bg-white dark:bg-zinc-700/50 text-zinc-900 dark:text-zinc-200 shadow-sm"
+                        : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-400"
+                    }`}
+                  >
+                    Chapters
+                  </button>
+                  {video.captions && video.captions.length > 0 && (
+                    <button
+                      onClick={() => setLeftTab("transcript")}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                        leftTab === "transcript"
+                          ? "bg-white dark:bg-zinc-700/50 text-zinc-900 dark:text-zinc-200 shadow-sm"
+                          : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-400"
+                      }`}
+                    >
+                      Transcript
+                    </button>
+                  )}
+                </div>
+                <div className={leftTab === "chapters" ? "space-y-3" : "hidden"}>
+                  <TimelineBar chapters={video.chapters} />
+                  <ChapterList chapters={video.chapters} />
+                </div>
+                {video.captions && video.captions.length > 0 && (
+                  <div className={leftTab === "transcript" ? "" : "hidden"}>
+                    <TranscriptPanel captions={video.captions} videoId={video.youtube_id} />
+                  </div>
+                )}
+              </>
+            ) : (
+              /* No chapters — show transcript directly if available */
+              video.captions && video.captions.length > 0 && (
+                <TranscriptPanel captions={video.captions} videoId={video.youtube_id} />
+              )
+            )}
           </div>
 
           {/* Right: Summary/Chat — independent scroll */}
@@ -359,18 +414,6 @@ export default function Home() {
               >
                 Chat
               </button>
-              {video.captions && video.captions.length > 0 && (
-                <button
-                  onClick={() => setActiveTab("transcript")}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-                    activeTab === "transcript"
-                      ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-500"
-                      : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
-                  }`}
-                >
-                  Transcript
-                </button>
-              )}
             </div>
 
             {/* Tab content — both mounted, toggle visibility to preserve state */}
@@ -391,11 +434,6 @@ export default function Home() {
                 frames={frames}
               />
             </div>
-            {video.captions && video.captions.length > 0 && (
-              <div className={`p-6 overflow-y-auto flex-1 ${activeTab === "transcript" ? "" : "hidden"}`}>
-                <TranscriptPanel captions={video.captions} videoId={video.youtube_id} />
-              </div>
-            )}
           </div>
         </div>
       )}

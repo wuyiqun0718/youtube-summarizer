@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -63,12 +64,32 @@ function groupByTime(videos: VideoSummary[]): TimeGroup[] {
 }
 
 export default function HistoryPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [videos, setVideos] = useState<VideoSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [showFavOnly, setShowFavOnly] = useState(false);
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
+
+  // Initialize filters from URL params
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+  const [showFavOnly, setShowFavOnly] = useState(searchParams.get("fav") === "1");
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(() => {
+    const tagParam = searchParams.get("tags");
+    if (!tagParam) return new Set();
+    return new Set(tagParam.split(",").map(Number).filter(Boolean));
+  });
+
+  // Sync filters to URL
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("q", search.trim());
+    if (showFavOnly) params.set("fav", "1");
+    if (selectedTagIds.size > 0) params.set("tags", Array.from(selectedTagIds).join(","));
+    const qs = params.toString();
+    const newUrl = qs ? `/history?${qs}` : "/history";
+    router.replace(newUrl, { scroll: false });
+  }, [search, showFavOnly, selectedTagIds, router]);
 
   useEffect(() => {
     async function fetchHistory() {
